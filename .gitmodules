@@ -7,3 +7,9 @@
 [submodule "nlohmann-json"]
 	path = nlohmann-json
 	url = git@github.com:nlohmann/json.git
+[submodule "third-party/nlohmann-json"]
+	path = third-party/nlohmann-json
+	url = git@github.com:nlohmann/json.git
+[submodule "third-party/cryptopp"]
+	path = third-party/cryptopp
+	url = git@github.com:weidai11/cryptopp.git
