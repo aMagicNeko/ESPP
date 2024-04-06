@@ -1,0 +1,9 @@
+[submodule "third-party/brpc"]
+	path = third-party/brpc
+	url = git@github.com:apache/brpc.git
+[submodule "third-party/gflags"]
+	path = third-party/gflags
+	url = git@github.com:gflags/gflags.git
+[submodule "nlohmann-json"]
+	path = nlohmann-json
+	url = git@github.com:nlohmann/json.git
