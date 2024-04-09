@@ -41,6 +41,8 @@ int UniswapV2Abi::init(ClientBase* client) {
     //std::vector<bthread_t> bids;
     std::vector<std::string> pools;
     for (uint64_t i = 0; i < npools; ++i) {
+        if (i >= 50000)
+            break;
         Uint<256> index(i);
         Call call(factory_address, head + index.encode());
         //LOG(INFO) << "songmingzhi: " << head + index.encode();

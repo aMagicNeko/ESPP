@@ -3,17 +3,17 @@ DEFINE_string(verify_file, "/etc/pki/tls/certs/ca-bundle.crt", "CA file path");
 
 int SecureWebsocket::connect(const std::string &host, const std::string &port, const std::string &path) {
     try {
-            // 设置SNI（Server Name Indication）主机名
-        //if (!SSL_set_tlsext_host_name(_stream.native_handle(), (void*)host)) {
-            //throw boost::system::system_error(
-                //boost::asio::error::make_error_code(boost::asio::error::ssl_errors::stream_errors));
-        //}
-        _ctx.load_verify_file(FLAGS_verify_file);
+        // 设置 SSL 上下文
+        _ctx.set_default_verify_paths(); // 使用系统默认的CA证书路径
+        _ctx.set_verify_mode(ssl::verify_peer); // 开启对等方证书的验证
         // 连接到服务器
         asio::ip::tcp::resolver resolver(_io_context);
         auto const results = resolver.resolve(host, port);
         asio::connect(_tcp_socket, results.begin(), results.end());
-
+        // 设置 SNI 主机名
+        if (!SSL_set_tlsext_host_name(_ssl_socket.native_handle(), host.c_str())) {
+            LOG(FATAL) << "set tlxset failed";
+        }
         // SSL handshake
         _ssl_socket.handshake(asio::ssl::stream_base::client);
 
