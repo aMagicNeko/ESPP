@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.14)
-set(CMAKE_TOOLCHAIN_FILE /root/vcpkg/scripts/buildsystems/vcpkg.cmake CACHE STRING "Vcpkg toolchain file")
 
 project(MEVpp VERSION 1.0 DESCRIPTION "CPP MEV")
 
@@ -16,23 +15,17 @@ find_package(Boost COMPONENTS system REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(gflags CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_package(cryptopp REQUIRED)
 
 include_directories(${CMAKE_SOURCE_DIR})
-include_directories(${CMAKE_SOURCE_DIR}/third-party/brpc/src)
-include_directories(${CMAKE_SOURCE_DIR}/third-party/nlohmann-json/include)
-
 include_directories(/root/vcpkg/installed/arm64-linux/include)
 
 
 message(STATUS "ZLIB_FOUND: ${ZLIB_FOUND}")
 message(STATUS "ZLIB_LIBRARIES: ${ZLIB_LIBRARIES}")
 
-add_subdirectory(third-party/brpc)
-add_subdirectory(third-party/cryptopp)
-add_subdirectory(third-party/nlohmann-json)
-
-#set(MY_LIBS cryptopp brpc-static ${CMAKE_SOURCE_DIR}/build/third-party/brpc/output/lib/libbrpc.a gflags /usr/lib/aarch64-linux-gnu/libssl.a /usr/lib/aarch64-linux-gnu/libcrypto.a Boost::system protobuf::libprotobuf protobuf::libprotoc protobuf::libprotobuf-lite ZLIB::ZLIB)
-set(MY_LIBS cryptopp brpc-static gflags OpenSSL::SSL OpenSSL::Crypto Boost::system protobuf::libprotobuf protobuf::libprotoc protobuf::libprotobuf-lite ZLIB::ZLIB)
+set(MY_LIBS cryptopp evmone brpc gflags OpenSSL::SSL OpenSSL::Crypto Boost::system protobuf::libprotobuf protobuf::libprotoc protobuf::libprotobuf-lite ZLIB::ZLIB)
 
 link_libraries(pthread rt)
 

@@ -1,0 +1,32 @@
+test_abi_kernel_version : "Linux fa37371fa85e 6.6.16-linuxkit #1 SMP Fri Feb 16 11:54:02 UTC 2024 aarch64 aarch64 aarch64 GNU/Linux
+"
+test_abi_process_cmdline : "./build/test_abi
+conf/gflags.conf
+"
+test_abi_process_context_switches_involuntary_second : 0
+test_abi_process_context_switches_voluntary_second : 14
+test_abi_process_cpu_usage : 0.003
+test_abi_process_cpu_usage_system : 0.001
+test_abi_process_cpu_usage_user : 0.002
+test_abi_process_disk_read_bytes_second : 0
+test_abi_process_disk_write_bytes_second : 0
+test_abi_process_faults_major : 0
+test_abi_process_faults_minor_second : 0
+test_abi_process_fd_count : 17
+test_abi_process_inblocks_second : 0
+test_abi_process_io_read_bytes_second : 508
+test_abi_process_io_read_second : 5
+test_abi_process_io_write_bytes_second : 545
+test_abi_process_io_write_second : 3
+test_abi_process_memory_data_and_stack : 256753664
+test_abi_process_memory_resident : 134647808
+test_abi_process_memory_shared : 6553600
+test_abi_process_memory_text : 3354624
+test_abi_process_memory_virtual : 968671232
+test_abi_process_nice : 0
+test_abi_process_outblocks_second : 0
+test_abi_process_priority : 20
+test_abi_process_thread_count : 13
+test_abi_process_uptime : 384.249750
+test_abi_process_username : "unknown (No such device or address)"
+test_abi_process_work_dir : "/root/MEVpp"
