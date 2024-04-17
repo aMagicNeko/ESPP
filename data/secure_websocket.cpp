@@ -5,7 +5,7 @@ int SecureWebsocket::connect(const std::string &host, const std::string &port, c
     try {
         // 设置 SSL 上下文
         _ctx.set_default_verify_paths(); // 使用系统默认的CA证书路径
-        _ctx.set_verify_mode(ssl::verify_peer); // 开启对等方证书的验证
+        _ctx.set_verify_mode(asio::ssl::verify_peer); // 开启对等方证书的验证
         // 连接到服务器
         asio::ip::tcp::resolver resolver(_io_context);
         auto const results = resolver.resolve(host, port);

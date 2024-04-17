@@ -1,10 +1,13 @@
 #include "data/client.h"
 #include "util/json_parser.h"
 #include "data/tx_pool.h"
+#include "simulate/simulate_manager.h"
 DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(wait_timeout_ms, 5000, "max wait time in milliseconds");
 // avoid high-parallel error on write
 DEFINE_int32(write_wait_ms, 1000, "wait before wait time in us");
+DECLARE_bool(simulate_check);
+
 const int ID_CIRCLE_SHILFT = 12;
 const int INDEX_AND = ((1 << ID_CIRCLE_SHILFT) - 1);
 ClientBase::ClientBase() : _tx_detail_latency("tx_detail_latency"), _header_latency("header_latency") {
@@ -15,7 +18,8 @@ ClientBase::ClientBase() : _tx_detail_latency("tx_detail_latency"), _header_late
     _inited = 0;
     _butex_vec.resize(1 << ID_CIRCLE_SHILFT);
     for (size_t i = 0; i < _butex_vec.size(); ++i) {
-        _butex_vec[i]= bthread::butex_create_checked<uint32_t>();
+        _butex_vec[i] = bthread::butex_create_checked<std::atomic<uint32_t>>();
+        _butex_vec[i]->store(0);
     }
     _data_vec.resize(1 << ID_CIRCLE_SHILFT);
     _tx_send_timestamps.resize(1 << ID_CIRCLE_SHILFT);
@@ -55,9 +59,9 @@ int ClientBase::get_data(json& j, uint32_t id) {
     return 0;
 }
 
-int ClientBase::get_butex(uint32_t** butex, uint32_t id) {
+int ClientBase::get_butex(std::atomic<uint32_t>** butex, uint32_t id) {
     *butex = _butex_vec[id & ((1 << ID_CIRCLE_SHILFT) - 1)];
-    if ((**butex) != id) {
+    if ((*butex)->load(std::memory_order_relaxed) != id) {
         butex = 0;
         return OLD_REQUEST;
     }
@@ -106,6 +110,11 @@ int ClientBase::handle_headers(const json& j) {
         LOG(ERROR) << "head baseFee unexpected: expected=" << _block_info.base_fee << ", received=" << base_fee;
         ret = HEAD_BASE_FEE_UNPEXPECTED_ERROR;
     }
+    uint256_t difficulty = 0;
+    if (parse_json(j, "difficulty", difficulty) != 0) {
+        LOG(ERROR) << "parse difficulty failed:" << j.dump();
+        ret = PARSE_HEAD_TIMESTAMP_ERROR;
+    }
     //BLOCK_LOG("---------------------------------------------------------------NEW BLOCK---------------");
     //BLOCK_LOG("[number=%lu][timestamp=%lu][baseFeePerGas=%lu][gasUsed=%lu][gasLimit=%lu]", number, timestamp, base_fee, gas_used, gas_limit);
     LOG(INFO) << "---------------------------------------------------------------NEW BLOCK---------------";
@@ -117,11 +126,18 @@ int ClientBase::handle_headers(const json& j) {
     uint64_t target_gas = gas_limit / 2;
     if (gas_used > target_gas) {
         _block_info.base_fee = base_fee + base_fee * (gas_used - target_gas) / (target_gas * 8);
+        _block_info.gas_limit = gas_limit + gas_limit / 1024;
+    }
+    else if (gas_used < target_gas) {
+        _block_info.base_fee = base_fee - base_fee * (target_gas - gas_used) / (target_gas * 8);
+        _block_info.gas_limit = gas_limit - gas_limit / 1024;
     }
     else {
-        _block_info.base_fee = base_fee - base_fee * (target_gas - gas_used) / (target_gas * 8);
+        _block_info.base_fee = base_fee;
+        _block_info.gas_limit = gas_limit;
     }
     _block_info.number = number + 1;
+    evmc::SimulateManager::instance()->set_head_info(timestamp + 12, _block_info.gas_limit, _block_info.base_fee, number + 1, difficulty);
     return ret;
 }
 
@@ -158,7 +174,7 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
             ret = PARSE_TRANSACTION_FROM_ERROR;
             break;
         }
-        if (!TxPool::instance()->has_account(from)) {
+        if (!FLAGS_simulate_check && !TxPool::instance()->has_account(from)) {
             // query nonce
             uint32_t id = _id.fetch_add(1);
             json tmp_j = {{"jsonrpc", "2.0"}, {"method", "eth_getTransactionCount"}, {"params", {j["from"], "latest"}}, {"id", id}};
@@ -199,7 +215,6 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
         }
         uint64_t priority_fee = 0;
         if (type == "0x0" || type == "0x1") {
-            // TODO: Access List Parse
             uint64_t gas_price = 0;
             if (parse_json(j, "gasPrice", gas_price) != 0) {
                 ret = PARSE_TRANSACTION_GAS_PRICE_ERROR;
@@ -228,13 +243,27 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
             }
         }
         else if (type == "0x3") {
-            // TODO;
+            // TODO; blob transaction
         }
         else {
             ret = PARSE_TRANSACTION_TYPE_UNKNOWN_ERROR;
             break;
         }
-        TxPool::instance()->add_tx(std::make_shared<Transaction>(Transaction{int64_t(nonce), priority_fee, value, from, to, gas, input, 0ul, hash, time_stamp}));
+        auto tx = std::make_shared<Transaction>(Transaction{int64_t(nonce), priority_fee, value, from, to, gas, input, 0ul, hash, time_stamp});
+        if (j.find("accessList") != j.end()) {
+            for (auto jj : j["accessList"]) {
+                std::vector<std::string> tmp;
+                tmp.push_back(jj["address"]);
+                //LOG(INFO) << "add accessList:" << tmp.back();
+                for (auto jjj : jj["storage"]) {
+                    tmp.push_back(jjj);
+                    LOG(INFO) << tmp.back();
+                }
+                tx->access_list.push_back(tmp);
+            }
+        }
+        LOG(INFO) << "pending tx:" << j.dump();
+        TxPool::instance()->add_tx(tx);
         //BLOCK_LOG("pending transaction: [from=%s][nonce=%lu][priorityFee=%lu][gas=%lu][value=%s][to=%s][input=%s]", 
                 //from.c_str(), nonce, priority_fee, gas, value.str().c_str(), to.c_str(), input.c_str());
         return 0;
@@ -320,7 +349,7 @@ void* ClientBase::run(void* param) {
                 continue;
             }
             else {
-                uint32_t* butex = 0;
+                std::atomic<uint32_t>* butex = 0;
                 if (client->get_butex(&butex, id) == 0) {
                     failed = client->set_data(json_data, id);
                     bthread::butex_wake_all(butex);
@@ -387,8 +416,8 @@ int ClientBase::subscribe_transactions() {
 int ClientBase::write_and_wait(json& j) {
     uint32_t id = _id.fetch_add(1, std::memory_order_relaxed);
     j["id"] = id;
-    uint32_t* butex = _butex_vec[id & INDEX_AND];
-    *butex = id;
+    std::atomic<uint32_t>* butex = _butex_vec[id & INDEX_AND];
+    butex->store(id, std::memory_order_relaxed);
     if (write(j) != 0) {
         LOG(ERROR) << "write failed";
         return -1;

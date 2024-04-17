@@ -38,16 +38,12 @@ int UniswapV2Abi::init(ClientBase* client) {
     std::string multicall_address = "0xcA11bde05977b3631167028862bE2a173976CA11";
     std::string muticall_head = HashAndTakeFirstFourBytes("tryAggregate(bool,(address,bytes)[])");
     MultiCall multi_call(0);
-    //std::vector<bthread_t> bids;
     std::vector<std::string> pools;
     for (uint64_t i = 0; i < npools; ++i) {
-        if (i >= 50000)
-            break;
         Uint<256> index(i);
         Call call(factory_address, head + index.encode());
-        //LOG(INFO) << "songmingzhi: " << head + index.encode();
         multi_call.add_call(call);
-        if ((i + 1) % FLAGS_batch_size == 0 || npools - i < uint32_t(FLAGS_batch_size)) {
+        if ((i + 1) % FLAGS_batch_size == 0 || i == npools - 1) {
             json_data = {
                 {"jsonrpc", "2.0"},
                 {"method", "eth_call"},
@@ -60,19 +56,20 @@ int UniswapV2Abi::init(ClientBase* client) {
             multi_call.clear();
             int failed_cnt = 0;
             while (failed_cnt < FLAGS_long_request_failed_limit) {
-                if (client->write_and_wait(json_data) != 0) {
+                json json_tmp = json_data;
+                if (client->write_and_wait(json_tmp) != 0) {
                     LOG(ERROR) << "get" << i << "th UniswapV2 pool failed";
                     ++failed_cnt;
                     continue;
                 }
-                if (parse_json(json_data, "result", tmp) != 0) {
-                    LOG(ERROR) << "call Multicall failed: " << json_data.dump();
+                if (parse_json(json_tmp, "result", tmp) != 0) {
+                    LOG(ERROR) << "call Multicall failed: " << json_tmp.dump();
                     ++failed_cnt;
                     continue;                    
                 }
                 std::vector<std::string> ress;
                 if (MultiCall::decode(tmp.substr(2), ress) != 0) {
-                    LOG(ERROR) << "decode multicall failed: " << json_data.dump();;
+                    LOG(ERROR) << "decode multicall failed: " << json_tmp.dump();;
                     ++failed_cnt;
                     continue;
                 }
@@ -91,6 +88,7 @@ int UniswapV2Abi::init(ClientBase* client) {
                     pools.push_back(pool_address);
                     LOG(INFO) << "pool " << pools.size() << ": " << pool_address;
                 }
+                break;
             }
         }
     }
@@ -127,34 +125,42 @@ int UniswapV2Abi::get_data(ClientBase* client, uint64_t block_num, const std::ve
                 {"id", 1}
             };
             multi_call.clear();
-            if (client->write_and_wait(json_data) != 0) {
-                LOG(ERROR) << "get" << i << "th UniswapV2 pool data failed";
-                return -1;
-            }
-            std::string tmp;
-            if (parse_json(json_data, "result", tmp) != 0) {
-                LOG(ERROR) << "call Multicall failed: " << json_data.dump();
-                return -1;
-            }
-            std::vector<std::string> ress;
-            if (MultiCall::decode(tmp.substr(2), ress) != 0) {
-                LOG(ERROR) << "decode multicall failed: " << json_data.dump();
-                return -1;
-            }
-            for (auto& res : ress) {
-                std::string r;
-                if (Call::decode(res, r) != 0) {
-                    LOG(ERROR) << "call failed";
-                    return -1;
+            int failed_cnt = 0;
+            while (failed_cnt < FLAGS_long_request_failed_limit) {
+                json json_tmp = json_data;
+                if (client->write_and_wait(json_tmp) != 0) {
+                    LOG(ERROR) << "get" << i << "th UniswapV2 pool data failed";
+                    ++failed_cnt;
+                    continue;
                 }
-                std::vector<std::string> tmp1;
-                if (DBytes::decode_32(r, tmp1) != 0 || tmp1.size() != 3) {
-                    LOG(ERROR) << "decode dbytes failed";
-                    return -1;
+                std::string tmp;
+                if (parse_json(json_tmp, "result", tmp) != 0) {
+                    LOG(ERROR) << "call Multicall failed: " << json_tmp.dump();
+                    ++failed_cnt;
+                    continue;
                 }
-                _reserve0.push_back(Uint<256>::decode(tmp1[0]));
-                _reserve1.push_back(Uint<256>::decode(tmp1[1]));
-                LOG(INFO) << "reserve 0:" << _reserve0.back() << " reserve 1:" << _reserve1.back();
+                std::vector<std::string> ress;
+                if (MultiCall::decode(tmp.substr(2), ress) != 0) {
+                    LOG(ERROR) << "decode multicall failed: " << json_tmp.dump();
+                    ++failed_cnt;
+                    continue;
+                }
+                for (auto& res : ress) {
+                    std::string r;
+                    if (Call::decode(res, r) != 0) {
+                        LOG(ERROR) << "call failed";
+                        return -1;
+                    }
+                    std::vector<std::string> tmp1;
+                    if (DBytes::decode_32(r, tmp1) != 0 || tmp1.size() != 3) {
+                        LOG(ERROR) << "decode dbytes failed";
+                        return -1;
+                    }
+                    _reserve0.push_back(Uint<256>::decode(tmp1[0]));
+                    _reserve1.push_back(Uint<256>::decode(tmp1[1]));
+                    LOG(INFO) << "reserve 0:" << _reserve0.back() << " reserve 1:" << _reserve1.back();
+                }
+                break;
             }
         }
     }

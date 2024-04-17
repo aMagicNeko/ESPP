@@ -3,9 +3,12 @@
 #include <vector>
 #include <algorithm>
 #include <boost/multiprecision/cpp_int.hpp>
-
+#include <string_view>
 std::string HashAndTakeFirstFourBytes(const std::string& input);
 std::string HashAndTakeAllBytes(const std::string& input);
+std::string HashAndTakeAllBytes(const std::basic_string<uint8_t>& input);
+std::string HashAndTakeAllBytes(const std::basic_string_view<uint8_t>& input);
+std::string HashAndTakeAllBytes(const std::vector<uint8_t>& input);
 class SolidityType {
 public:
     virtual ~SolidityType() = default;

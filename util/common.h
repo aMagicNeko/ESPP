@@ -11,9 +11,6 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
-#include <unordered_set>
-#include <unordered_map>
-#include <set>
 #include <memory>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -44,3 +41,17 @@
 #include "util/lock_guard.h"
 using uint256_t = boost::multiprecision::uint256_t;
 using json = nlohmann::json;
+
+template <typename T, typename Z>
+void copy_set(const butil::FlatSet<T, Z>& original, butil::FlatSet<T, Z>& copy) {
+    for (const T& value : original) {
+        copy.insert(value);
+    }
+}
+
+template <typename K, typename V, typename Z>
+void copy_map(const butil::FlatMap<K, V, Z>& original, butil::FlatMap<K, V, Z>& copy) {
+    for (const auto& pair : original) {
+        copy.insert(pair);
+    }
+}

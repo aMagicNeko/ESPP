@@ -1,13 +1,19 @@
 #include "data/tx_pool.h"
 #include "data/client.h"
 #include "util/json_parser.h"
+#include "data/request.h"
+#include "simulate/simulate_manager.h"
 // 防止因一次请求失败陷入block reorg或者程序崩溃
 DEFINE_int32(long_request_failed_limit, 50, "max try num in a big operation");
 DEFINE_string(from, "0xa22cf23D58977639e05B45A3Db7dF6D4a91eb892", "address of from");
 DECLARE_int32(batch_size);
+DECLARE_bool(simulate_check);
+
 // on a new head, to check the order of prevent txs of the pre block
 void* check_order_wrap(void* arg) {
-    std::set<std::shared_ptr<Transaction>, TxCompare>* txs = (std::set<std::shared_ptr<Transaction>, TxCompare>*)arg;
+    __gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
+            __gnu_pbds::rb_tree_tag, __gnu_pbds::tree_order_statistics_node_update>* txs = (__gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
+            __gnu_pbds::rb_tree_tag, __gnu_pbds::tree_order_statistics_node_update>*)arg;
     TxPool::instance()->check_order(txs);
     delete txs;
     return NULL;
@@ -62,20 +68,11 @@ void* update_pools_wrap(void* arg) {
     return NULL;
 }
 
-void TxPool::check_order(std::set<std::shared_ptr<Transaction>, TxCompare>* txs) {
-    json json_data = {
-        {"jsonrpc", "2.0"}, {"method", "eth_getBlockByNumber"}, {"params", {"latest", false}}, {"id", 1}
-    };
-    if (_client->write_and_wait(json_data) != 0) {
+void TxPool::check_order(__gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
+            __gnu_pbds::rb_tree_tag, __gnu_pbds::tree_order_statistics_node_update>* txs) {
+    std::vector<std::string> hashs;
+    if (request_txs_hash_by_number(_client, 0, hashs) != 0) {
         LOG(ERROR) << "check order failed";
-        return;
-    };
-    if (json_data.find("result") == json_data.end()) {
-        LOG(ERROR) << "check order failed: " << json_data.dump();
-        return;
-    }
-    if (json_data["result"].find("transactions") == json_data["result"].end()) {
-        LOG(ERROR) << "check order failed: " << json_data.dump();
         return;
     }
     butil::FlatMap<std::string, uint32_t> map;
@@ -88,15 +85,13 @@ void TxPool::check_order(std::set<std::shared_ptr<Transaction>, TxCompare>* txs)
         if (count_map.seek(p->from) == 0) {
             count_map[p->from] = count++;
         }
-        //TXS_LOG("accoutn_priority_fee%ld, time_stamp:%ld, priority_fee: %ld, account:%d, nonce: %d", p->account_priority_fee, p->time_stamp, p->priority_fee, count_map[p->from], p->nonce);
         LOG(INFO) << "accoutn_priority_fee: " << p->account_priority_fee << " time_stamp: " << p->time_stamp << " priority_fee: " << p->priority_fee << " account: " << count_map[p->from] << " nonce: " << p->nonce; 
         map.insert(p->hash, index++);
     }
     index = 0;
     std::stringstream ss;
     uint32_t unorder = 0;
-    for (std::string hash : json_data["result"]["transactions"]) {
-        //LOG(INFO) << "debug 2";
+    for (std::string hash : hashs) {
         if (map.seek(hash) == 0) {
             continue;
         }
@@ -106,34 +101,21 @@ void TxPool::check_order(std::set<std::shared_ptr<Transaction>, TxCompare>* txs)
         ++index;
     }
     _unorder_ratio << 1.0 * unorder / map.size();
-    //TXS_LOG("%s", ss.str().c_str());
     LOG(INFO) << ss.str();
 }
 
 int TxPool::get_pending_txs() {
-    json json_data = {
-        {"jsonrpc", "2.0"}, {"method", "eth_getBlockByNumber"}, {"params", {"pending", true}}, {"id", 1}
-    };
-    if (_client->write_and_wait(json_data) != 0) {
-        LOG(ERROR) << "check order failed";
-        return -1;
-    };
-    if (json_data.find("result") == json_data.end()) {
-        LOG(ERROR) << "check order failed: " << json_data.dump();
-        return -1;
-    }
-    if (json_data["result"].find("transactions") == json_data["result"].end()) {
-        LOG(ERROR) << "check order failed: " << json_data.dump();
+    std::vector<json> txs;
+    if (request_txs_by_number(_client, 1, txs) != 0) {
+        LOG(ERROR) << "get_pending_txs failed";
         return -1;
     }
     int32_t count = 0;
-    for (auto tx : json_data["result"]["transactions"]) {
-        if (tx.find("from") == tx.end() || tx.find("to") == tx.end()) {
-            continue;
-        }
+    for (auto tx : txs) {
         int ret = _client->handle_transactions(tx, 0);
         if (ret != 0) {
             LOG(ERROR) << "handle transaction failed: " <<  ret << tx.dump();
+            //return -1;
         }
         ++count;
     }
@@ -142,7 +124,8 @@ int TxPool::get_pending_txs() {
 }
 
 int TxPool::on_head(const std::string& parent_hash) {
-    auto tmp = new std::set<std::shared_ptr<Transaction>, TxCompare>;
+    auto tmp = new __gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
+            __gnu_pbds::rb_tree_tag, __gnu_pbds::tree_order_statistics_node_update>;
     {
         LockGuard lock(&_mutex);
         _txs.swap(*tmp);
@@ -159,10 +142,17 @@ int TxPool::on_head(const std::string& parent_hash) {
 
 void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
     LockGuard lock(&_mutex);
+    if (tx->from.size() == 0) {
+        return;
+    }
     //LOG(INFO) << "add tx: " << tx->hash;
     auto account = _accounts.seek(tx->from);
     if (account == NULL) {
         account = _accounts.insert(tx->from, Account());
+    }
+    if (FLAGS_simulate_check) {
+        account->nonce = tx->nonce;
+        account->continuous_nonce = tx->nonce;
     }
     if (tx->nonce < account->nonce) {
         //LOG(INFO) << "old tx " << tx->hash;
@@ -170,19 +160,27 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
         return;
     }
     auto it = account->pending_txs.find(tx->nonce);
+    size_t change_idx = 10000000; // 池中最小的受到影响的tx
     if (it != account->pending_txs.end()) {
         //LOG(INFO) << "replace the same nonce " << tx->hash;
         // replace 同nonce的交易
-        if (_txs.find(it->second) != _txs.end()) {
+        auto p = _txs.find(it->second);
+        if (p != _txs.end()) {
+            change_idx = _txs.order_of_key(*p);
             _txs.erase(it->second);
         }
         account->pending_txs.erase(it);
     }
     account->pending_txs.emplace(tx->nonce, tx);
+    size_t tmp = _txs.order_of_key(tx);
+    if (tmp < change_idx) {
+        change_idx = tmp;
+    }
     if (tx->nonce <= account->continuous_nonce) {
         // 更新同一account在这个nonce之后的交易
         update_txs(account, tx->nonce);
     }
+    evmc::SimulateManager::instance()->notice_change(change_idx);
 }
 
 void TxPool::update_txs(Account* account, int64_t nonce) {
@@ -253,18 +251,22 @@ int TxPool::add_pools(const std::vector<std::string>& pools) {
             };
             multi_call.clear();
             while (failed_cnt < FLAGS_long_request_failed_limit) {
-                if (_client->write_and_wait(json_data) != 0) {
+                json json_tmp = json_data;
+                if (_client->write_and_wait(json_tmp) != 0) {
                     LOG(ERROR) << "get" << i << "th UniswapV2 pool token failed";
+                    ++failed_cnt;
                     continue;
                 }
                 std::string tmp;
-                if (parse_json(json_data, "result", tmp) != 0) {
-                    LOG(ERROR) << "call Multicall failed";
+                if (parse_json(json_tmp, "result", tmp) != 0) {
+                    LOG(ERROR) << "call Multicall failed:" << json_tmp.dump();
+                    ++failed_cnt;
                     continue;
                 }
                 std::vector<std::string> ress;
                 if (MultiCall::decode(tmp.substr(2), ress) != 0) {
                     LOG(ERROR) << "decode multicall failed";
+                    ++failed_cnt;
                     continue;
                 }
                 for (uint k = 0; k < ress.size(); k += 2, ++j) {
@@ -291,6 +293,7 @@ int TxPool::add_pools(const std::vector<std::string>& pools) {
                     std::string token_address1 = Address::decode(tmp1[0]);
                     add_pool(token_address0, token_address1, pool_address);
                 }
+                break;
             }
         }
     }
@@ -333,28 +336,6 @@ void TxPool::add_pool(const std::string& token_address0, const std::string& toke
     _reverse_pools[index1][index0].push_back(pool_index);
 }
 
-int TxPool::get_block_number(uint64_t& block_num) const {
-    json json_data = {
-        {"jsonrpc", "2.0"},
-        {"method", "eth_blockNumber"},
-        {"params", {}},
-        {"id", 1}
-    };
-    if (_client->write_and_wait(json_data) != 0) {
-        LOG(ERROR) << "get block number failed";
-        return -1;
-    }
-    std::string tmp;
-    if (parse_json(json_data, "result", tmp) != 0) {
-        LOG(ERROR) << "get block number failed" << json_data.dump();
-        return -1;
-    }
-    std::stringstream ss;
-    ss << tmp.substr(2);
-    ss >> std::hex >> block_num;
-    return 0;
-}
-
 int TxPool::init(ClientBase* client) {
     _tokens_index.init(1000);
     _pools_index.init(30000);
@@ -362,7 +343,9 @@ int TxPool::init(ClientBase* client) {
     _reverse_pools.init(30000);
     _accounts.init(1500);
     _client = client;
-    _dexs.push_back(new UniswapV2Abi);
+    if (!FLAGS_simulate_check) {
+        _dexs.push_back(new UniswapV2Abi);
+    }
     _get_logs_json = {
         {"jsonrpc", "2.0"},
         {"method", "eth_getLogs"},
@@ -397,7 +380,7 @@ int TxPool::init(ClientBase* client) {
 int TxPool::get_pools_data() {
     LockGuard lock(&_pools_mutex);
     uint64_t block_num = 0;
-    if (get_block_number(block_num) < 0) {
+    if (request_block_number(_client, block_num) < 0) {
         LOG(ERROR) << "get block number failed";
         return -1;
     }
@@ -417,7 +400,7 @@ int TxPool::update_pools() {
     int failed_cnt = 0;
     while (failed_cnt <= FLAGS_long_request_failed_limit) {
         uint64_t block_num = 0;
-        if (get_block_number(block_num) < 0) {
+        if (request_block_number(_client, block_num) < 0) {
             LOG(ERROR) << "get block number failed";
             ++failed_cnt;
             continue;
@@ -433,7 +416,7 @@ int TxPool::update_pools() {
         json json_data = _get_logs_json;
         json_data["params"][0]["fromBlock"] = "0x" + block;
         json_data["params"][1]["toBlock"] = "0x" + block;
-        LOG(INFO) << "start to get logs: " << json_data.dump();
+        LOG(INFO) << "start to get logs:" << json_data.dump();
         if (_client->write_and_wait(json_data) != 0) {
             LOG(ERROR) << "get logs failed";
             ++failed_cnt;
@@ -445,7 +428,6 @@ int TxPool::update_pools() {
             continue;
         }
         for (auto &it : json_data["result"]) {
-            //LOG(INFO) << it.dump();
             std::string address;
             if (parse_json(it, "address", address) != 0) {
                 LOG(ERROR) << "get logs failed: " << json_data.dump();
@@ -465,7 +447,7 @@ int TxPool::update_pools() {
             uint32_t pool_index = *p;
             for (uint32_t i = 0; i < _dexs.size(); ++i) {
                 if (pool_index >= _dexs[i]->start_index && pool_index < _dexs[i]->start_index + _dexs[i]->npools) {
-                    LOG(INFO) << it.dump();
+                    //LOG(INFO) << it.dump();
                     if (_dexs[i]->on_event(pool_index, it) != 0) {
                         LOG(ERROR) << "on event failed";
                         return -1;
@@ -481,35 +463,30 @@ int TxPool::update_pools() {
 
 int TxPool::check_parent(const std::string& parent_hash) const {
     int failed_cnt = 0;
+    std::string hash;
     while (failed_cnt <= FLAGS_long_request_failed_limit) {
-        std::stringstream ss;
-        ss << std::hex << _track_block;
-        std::string block;
-        ss >> block;
-        json json_data = {
-            {"jsonrpc", "2.0"}, {"method", "eth_getHeaderByNumber"}, {"params", {"0x" + block}}, {"id", 1}
-        };
-        LOG(INFO) << "start to check_parent:" << json_data.dump();
-        if (_client->write_and_wait(json_data) != 0) {
-            LOG(ERROR) << "get block by number failed" << json_data.dump();
-            ++failed_cnt;
-            continue;
+        if (request_header_hash(_client, _track_block, hash) == 0) {
+            break;
         }
-        if (json_data.find("result") == json_data.end()) {
-            LOG(ERROR) << "get block by number failed" << json_data.dump();
-            ++failed_cnt;
-            continue;
-        }
-        std::string hash;
-        if (parse_json(json_data["result"], "hash", hash) != 0) {
-            LOG(ERROR) << "get block by number failed" << json_data.dump();
-            ++failed_cnt;
-            continue;
-        }
-        if (parent_hash != hash) {
-            LOG(ERROR) << "block hash not match";
-            return -1;
-        }
+        ++failed_cnt;
+    }
+    if (parent_hash != hash) {
+        LOG(ERROR) << "block hash not match";
+        return -1;
     }
     return 0;
+}
+
+int TxPool::get_tx(size_t index, std::shared_ptr<Transaction>& tx) {
+    LockGuard lock(&_mutex);
+    auto p = _txs.find_by_order(index);
+    if (p == _txs.end()) {
+        return -1;
+    }
+    tx = *p;
+    return 0;
+}
+
+void TxPool::notice_simulate_result(size_t index, const std::vector<evmc::LogEntry>& logs) {
+
 }

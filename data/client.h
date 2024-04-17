@@ -4,6 +4,7 @@
 struct BlockInfo {
     uint64_t base_fee; // next block baseFee
     uint64_t number; // next block number
+    uint64_t gas_limit; // next block gas
 };
 
 class ClientBase {
@@ -29,7 +30,7 @@ private:
     int set_data(const json&, uint32_t id);
     int handle_headers(const json& j);
     int get_data(json&, uint32_t id);
-    int get_butex(uint32_t** butex, uint32_t id);
+    int get_butex(std::atomic<uint32_t>** butex, uint32_t id);
     static void* run(void* arg);
     int _client_fd;
     bthread_t _bid;
@@ -38,7 +39,7 @@ private:
     std::string _transactions_sub_id;
     std::string _headers_sub_id;
     // use id to get data and butex
-    std::vector<uint32_t*> _butex_vec;
+    std::vector<std::atomic<uint32_t>*> _butex_vec;
     std::vector<json> _data_vec;
     // time, hash
     std::vector<std::pair<uint64_t, std::string>> _tx_send_timestamps;
