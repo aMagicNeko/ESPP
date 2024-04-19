@@ -1,0 +1,13 @@
+test_simulate_bthread_key_count : 1
+test_simulate_bthread_keytable_count : 2
+test_simulate_bthread_keytable_memory : 1536
+test_simulate_bthread_stack_count : 0
+test_simulate_bvar_dump_interval : 12
+test_simulate_gcc_version : "9.4.0"
+test_simulate_pgrp : 79852
+test_simulate_pid : 79852
+test_simulate_ppid : 79790
+test_simulate_system_core_count : 8
+test_simulate_system_loadavg_15m : 1.100
+test_simulate_system_loadavg_1m : 1.380
+test_simulate_system_loadavg_5m : 1.140

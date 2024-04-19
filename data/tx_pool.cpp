@@ -352,7 +352,7 @@ int TxPool::init(ClientBase* client) {
     _accounts.init(1500);
     _client = client;
     if (!FLAGS_simulate_check) {
-        _dexs.push_back(new UniswapV2Abi);
+        //_dexs.push_back(new UniswapV2Abi);
     }
     _get_logs_json = {
         {"jsonrpc", "2.0"},

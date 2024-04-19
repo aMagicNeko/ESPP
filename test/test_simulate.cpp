@@ -22,7 +22,9 @@ int main (int argc, char **argv) {
         usleep(1000);
         TxPool::instance()->init(&ws);
         evmc::SimulateManager::instance()->start(&ws);
-        evmc::SimulateManager::instance()->check_simulate();
+        //evmc::SimulateManager::instance()->check_simulate();
+        ws.subscribe_headers();
+        ws.subscribe_transactions();
         while (1) {
             sleep(1);
         } 
@@ -35,7 +37,9 @@ int main (int argc, char **argv) {
         usleep(1000);
         TxPool::instance()->init(&ws);
         evmc::SimulateManager::instance()->start(&ws);
-        evmc::SimulateManager::instance()->check_simulate();
+        //evmc::SimulateManager::instance()->check_simulate();
+        ws.subscribe_headers();
+        ws.subscribe_transactions();
         while (1) {
             sleep(1);
         }

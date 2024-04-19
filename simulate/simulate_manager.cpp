@@ -3,6 +3,7 @@
 #include "data/tx_pool.h"
 #include "util/solidity_type.h"
 #include "util/evmc_type.h"
+#include "util/latency.h"
 DECLARE_int32(wait_timeout_ms);
 DEFINE_bool(simulate_check, false, "whether using history txs to check the simulation");
 namespace evmc {
@@ -41,7 +42,7 @@ std::string Code::to_string() const  {
     return to_hex_string(_data.data(), _data.size());
 }
 
-SimulateManager::SimulateManager() {
+SimulateManager::SimulateManager() : _request_latency("request_latency") {
     _client = 0;
     bthread_mutex_init(&_mutex, 0);
     _balence_map.init(1000);
@@ -57,6 +58,7 @@ SimulateManager::SimulateManager() {
     _chain_id = bytes32(1);
     _request_block_number = 0;
     _vm = new VM(evmc_create_evmone());
+    _request_count = 0;
 }
 
 void* simulate_thread(void*) {
@@ -73,6 +75,8 @@ void SimulateManager::start(ClientBase* client) {
 int SimulateManager::get_balance(const address& addr, uint256be& val) {
     auto p = _balence_map.seek(addr);
     if (p == 0) {
+        ++_request_count;
+        LatencyWrapper latency(_request_latency);
         std::string addr_str = evmc_address_to_str(addr);
         uint256_t balance_data = 0;
         if (request_balance(_client, addr_str, balance_data, _request_block_number) != 0) {
@@ -92,6 +96,8 @@ int SimulateManager::get_storage(const address& addr, const bytes32& key, bytes3
     }
     auto pp = p->seek(key);
     if (pp == 0) {
+        ++_request_count;
+        LatencyWrapper latency(_request_latency);
         std::string result_str;
         std::string addr_str = evmc_address_to_str(addr);
         std::string key_str = bytes32_to_str(key);
@@ -108,6 +114,8 @@ int SimulateManager::get_storage(const address& addr, const bytes32& key, bytes3
 int SimulateManager::get_code(const address& addr, std::shared_ptr<Code>* c) {
     std::string code_str;
     std::string addr_str = evmc_address_to_str(addr);
+    ++_request_count;
+    LatencyWrapper latency(_request_latency);
     if (request_code(_client, addr_str, code_str, _request_block_number) != 0) {
         return -1;
     }
@@ -169,6 +177,8 @@ int SimulateManager::copy_code(const address& addr, size_t code_offset, uint8_t*
 int SimulateManager::get_block_hash(int64_t block_number, bytes32& hash) {
     auto p = _block_hash.seek(block_number);
     if (p == 0) {
+        ++_request_count;
+        LatencyWrapper latency(_request_latency);
         std::string hash;
         if (request_header_hash(_client, block_number, hash) != 0) {
             return -1;
@@ -183,6 +193,8 @@ int SimulateManager::get_block_hash(int64_t block_number, bytes32& hash) {
 int SimulateManager::get_nonce(const address& addr, uint64_t& nonce) {
     auto p = _nonce_map.seek(addr);
     if (p == 0) {
+        ++_request_count;
+        LatencyWrapper latency(_request_latency);
         if (request_nonce(_client, evmc_address_to_str(addr), nonce, _request_block_number) != 0) {
             return -1;
         }
@@ -192,13 +204,13 @@ int SimulateManager::get_nonce(const address& addr, uint64_t& nonce) {
 }
 
 void SimulateManager::notice_change(size_t change_idx) {
-    _butex->store(1, std::memory_order_relaxed);
     // no lock is required
     // in notice thread, idx only decrease
     size_t tmp = _change_idx.load();
     if (tmp > change_idx) {
         _change_idx.store(change_idx); // for fence
     }
+    _butex->store(1, std::memory_order_relaxed);
     bthread::butex_wake_all(_butex);
 }
 
@@ -275,10 +287,10 @@ void SimulateManager::run_in_loop() {
         }
         _butex->store(0, std::memory_order_relaxed);
         while (true) {
-            LockGuard lock(&_mutex); // for head info or result
             size_t cur = _change_idx.fetch_add(1);
             std::shared_ptr<Transaction> tx;
             if (TxPool::instance()->get_tx(cur, tx, _butex) != 0) [[unlikely]] {
+                _change_idx.fetch_sub(1);
                 // new head, txs is clear; or all pending txs simulated
                 break;
             }
@@ -289,6 +301,7 @@ void SimulateManager::run_in_loop() {
             const evmc_bytes32* blob_hashes = 0; // fake
             uint32_t blob_hash_count = 0; // fake
             address from = str_to_address(tx->from);
+            bthread_mutex_lock(&_mutex);// for head info or result
             evmc_tx_context context {
                 add_bytes32(bytes32(tx->priority_fee), _base_fee),
                 from,
@@ -305,39 +318,44 @@ void SimulateManager::run_in_loop() {
                 0,
                 0
             };
+            bthread_mutex_unlock(&_mutex);
+            auto host = std::make_shared<SimulateHost>(_vm, prev, tx->from.substr(2), tx->nonce, context);
             if (_hosts.size() <= cur) {
-                _hosts.push_back(std::make_shared<SimulateHost>(_vm, prev, tx->from.substr(2), tx->nonce, context));
+                _hosts.push_back(host);
             }
             else {
-                _hosts[cur] = std::make_shared<SimulateHost>(_vm, prev, tx->from.substr(2), tx->nonce, context);
+                _hosts[cur] = host;
             }
-            _hosts[cur]->set_nonce(from, tx->nonce);
+            host->set_nonce(from, tx->nonce);
             int64_t gas1 = compute_tx_intrinsic_cost(EVMC_LATEST_STABLE_REVISION, tx);
             bytes32 balance(0);
             get_balance(str_to_address(tx->from), balance);
             if (tx->gas <= static_cast<uint64_t>(gas1) || balance < uint256_to_bytes32(tx->gas * tx->priority_fee)) [[unlikely]] {
-                // failed
+                // failed tx
                 continue;
             }
             evmc_message msg = build_message(tx, tx->gas - gas1);
             LOG(INFO) << "msg:" << evmc_message_to_string(msg);
             // balance change on 
             LOG(INFO) << "start to simulate:" << cur;
-            Result res = _hosts[cur]->call(msg);
+            Result res = host->call(msg);
             LOG(INFO) << "end to simulte result:" << cur << evmc_result_to_string(res);
-            auto tmp = _hosts[cur]->get_logs();
+            LOG(INFO) << "simulate request count:" << _request_count;
+            _request_count = 0;
+            auto tmp = host->get_logs();
             for (auto& p:tmp) {
                 LOG(INFO) << "topics:" << p.to_string();
             }
             LOG(INFO) << "gas consumption:" << gas_comsumption(tx->gas, res);
-            if (_hosts[cur]->error()) [[unlikely]] {
+            if (host->error()) [[unlikely]] {
+                LOG(ERROR) << "simulate client error";
                 _change_idx.store(0);
                 continue;
             }
-            TxPool::instance()->notice_simulate_result(cur, _hosts[cur]->get_logs());
+            TxPool::instance()->notice_simulate_result(cur, host->get_logs());
             if (FLAGS_simulate_check) [[unlikely]] {
                 _results.emplace_back(res.release_raw());
-                _logs.push_back(_hosts[cur]->get_logs());
+                _logs.push_back(host->get_logs());
                 if (_logs.back().size()) [[likely]]
                     LOG(INFO) << "[log:" << evmc_address_to_str(_logs.back()[0].addr) << "][" << bytes32_to_str(_logs.back()[0].topics[0]);
             }

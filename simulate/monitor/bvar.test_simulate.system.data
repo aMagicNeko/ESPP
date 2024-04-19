@@ -3,30 +3,30 @@ test_simulate_kernel_version : "Linux fa37371fa85e 6.6.16-linuxkit #1 SMP Fri Fe
 test_simulate_process_cmdline : "/root/MEVpp/build/test_simulate
 /root/MEVpp/conf/gflags.conf
 "
-test_simulate_process_context_switches_involuntary_second : 0
-test_simulate_process_context_switches_voluntary_second : 11
-test_simulate_process_cpu_usage : 0.005
-test_simulate_process_cpu_usage_system : 0.001
-test_simulate_process_cpu_usage_user : 0.004
+test_simulate_process_context_switches_involuntary_second : 1
+test_simulate_process_context_switches_voluntary_second : 212
+test_simulate_process_cpu_usage : 0.047
+test_simulate_process_cpu_usage_system : 0.005
+test_simulate_process_cpu_usage_user : 0.042
 test_simulate_process_disk_read_bytes_second : 0
-test_simulate_process_disk_write_bytes_second : 930
+test_simulate_process_disk_write_bytes_second : 894
 test_simulate_process_faults_major : 0
-test_simulate_process_faults_minor_second : 63
-test_simulate_process_fd_count : 15
+test_simulate_process_faults_minor_second : 202
+test_simulate_process_fd_count : 16
 test_simulate_process_inblocks_second : 0
-test_simulate_process_io_read_bytes_second : 274
+test_simulate_process_io_read_bytes_second : 269
 test_simulate_process_io_read_second : 3
-test_simulate_process_io_write_bytes_second : 877
-test_simulate_process_io_write_second : 1
-test_simulate_process_memory_data_and_stack : 230457344
-test_simulate_process_memory_resident : 39215104
-test_simulate_process_memory_shared : 9306112
-test_simulate_process_memory_text : 8966144
-test_simulate_process_memory_virtual : 1052049408
+test_simulate_process_io_write_bytes_second : 25585
+test_simulate_process_io_write_second : 25
+test_simulate_process_memory_data_and_stack : 261906432
+test_simulate_process_memory_resident : 59219968
+test_simulate_process_memory_shared : 9175040
+test_simulate_process_memory_text : 8978432
+test_simulate_process_memory_virtual : 1060831232
 test_simulate_process_nice : 0
 test_simulate_process_outblocks_second : 2
 test_simulate_process_priority : 20
 test_simulate_process_thread_count : 13
-test_simulate_process_uptime : 24.747909
+test_simulate_process_uptime : 96.962031
 test_simulate_process_username : "unknown (No such device or address)"
 test_simulate_process_work_dir : "/root/MEVpp/simulate"

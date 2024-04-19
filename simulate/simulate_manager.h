@@ -103,6 +103,12 @@ private:
     std::vector<std::vector<LogEntry>> _logs;
     std::atomic<uint32_t>* _check_butex;
     std::shared_ptr<Code> _input;
+    // for latency
+    // approximate to 2 times latency between the node and client
+    // in ms
+    bvar::LatencyRecorder _request_latency;
+    // request count in a single execution
+    uint32_t _request_count;
 };
 
 }
