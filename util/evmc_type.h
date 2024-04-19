@@ -148,4 +148,26 @@ inline void evmc_address_copy(evmc_address* dest, const evmc_address* src) {
 inline void evmc_bytes32_copy(evmc_bytes32* dest, const evmc_bytes32* src) {
     memcpy(dest->bytes, src->bytes, sizeof(src->bytes));
 }
+
+inline std::string evmc_result_to_string(const Result& result) {
+    std::ostringstream oss;
+
+    oss << "Status code: " << result.status_code << '\n';
+    oss << "Gas left: " << result.gas_left << '\n';
+    oss << "Gas refund: " << result.gas_refund << '\n';
+
+    oss << "Output data: ";
+    for(size_t i = 0; i < result.output_size; ++i)
+        oss << static_cast<int>(result.output_data[i]) << ' ';
+    oss << '\n';
+
+    oss << "Output size: " << result.output_size << '\n';
+
+    // Assuming evmc_address is a struct that has an 'address' field
+    //oss << "Create address: " << result.create_address.bytes << '\n';
+
+    return oss.str();
+}
+
+
 }

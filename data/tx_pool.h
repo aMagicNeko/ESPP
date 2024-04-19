@@ -16,7 +16,7 @@ struct Transaction {
     uint64_t gas;
     std::string input;
     // min fee of the account of the all prev pending txs
-    uint64_t account_priority_fee;
+    uint64_t account_priority_fee; // 可能会在生成后改变 其他线程不应该访问这个值
     std::string hash;
     uint64_t time_stamp;
     std::vector<std::vector<std::string>> access_list;
@@ -73,9 +73,10 @@ public:
     int check_parent(const std::string& parent_hash) const;
     int get_pools_data();
     int update_pools();
-    // get pending tx by its order in the pool
-    int get_tx(size_t index, std::shared_ptr<Transaction>& tx);
+    // get pending tx by its order in the pool, x is used to notice if no new tx is here
+    int get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<uint32_t>* x = NULL);
     void notice_simulate_result(size_t index, const std::vector<evmc::LogEntry>& logs);
+    void add_simulate_tx(std::shared_ptr<Transaction> tx);
 private:
     /// @brief 更新账户nonce之后的交易在txs中的位置
     void update_txs(Account* account, int64_t nonce);

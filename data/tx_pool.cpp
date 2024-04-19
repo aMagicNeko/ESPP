@@ -183,6 +183,14 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
     evmc::SimulateManager::instance()->notice_change(change_idx);
 }
 
+void TxPool::add_simulate_tx(std::shared_ptr<Transaction> tx) {
+    LockGuard lock(&_mutex);
+    uint32_t i = _txs.size();
+    tx->account_priority_fee = 1000000 - i;
+    _txs.insert(tx);
+    evmc::SimulateManager::instance()->notice_change(i);
+}
+
 void TxPool::update_txs(Account* account, int64_t nonce) {
     int64_t cur = nonce;
     uint64_t prev_fee = _UINT64_MAX;
@@ -477,10 +485,13 @@ int TxPool::check_parent(const std::string& parent_hash) const {
     return 0;
 }
 
-int TxPool::get_tx(size_t index, std::shared_ptr<Transaction>& tx) {
+int TxPool::get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<uint32_t>* x) {
     LockGuard lock(&_mutex);
     auto p = _txs.find_by_order(index);
     if (p == _txs.end()) {
+        if (x) {
+            x->store(0);
+        }
         return -1;
     }
     tx = *p;

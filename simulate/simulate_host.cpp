@@ -12,6 +12,7 @@ SimulateHost::SimulateHost(VM* vm, SimulateHost* prev, const std::string& from, 
     _account_access_status_set.init(1);
     _storage_access_status_map.init(1);
     _transient_storage.init(1);
+    _nonce_map.init(1);
     if (prev != NULL) {
         copy_map(prev->_balance_map, _balance_map);
         copy_map(prev->_storage_map, _storage_map);
@@ -363,8 +364,8 @@ evmc::Result SimulateHost::execute_message(const evmc_message& msg) noexcept
     }
     std::shared_ptr<Code> code;
     SimulateManager::instance()->get_code(msg.code_address, &code);
-    LOG(INFO) << "msg:" << evmc_message_to_string(msg);
-    LOG(INFO) << "code:" << code->to_string();
+    //LOG(INFO) << "msg:" << evmc_message_to_string(msg);
+    //LOG(INFO) << "code:" << code->to_string();
     return _vm->execute(*this, _rev, msg, code->data(), code->size());
 }
 
@@ -375,7 +376,7 @@ evmc::Result SimulateHost::call(const evmc_message& orig_msg) noexcept
     const auto logs_checkpoint = _logs.size();
     const auto state_checkpoint = _journals.size();
     
-    LOG(INFO) << "msg:" << evmc_message_to_string(msg);
+    //LOG(INFO) << "msg:" << evmc_message_to_string(msg);
 
     auto result = execute_message(msg);
 
@@ -387,8 +388,8 @@ evmc::Result SimulateHost::call(const evmc_message& orig_msg) noexcept
     return result;
 }
 
-evmc_tx_context SimulateHost::get_tx_context() const noexcept {
-    return _context;
+const evmc_tx_context* SimulateHost::get_tx_context() const noexcept {
+    return &_context;
 }
 
 bytes32 SimulateHost::get_block_hash(int64_t block_number) const noexcept {
@@ -496,4 +497,9 @@ void SimulateHost::roll_back(uint32_t nlogs, uint32_t nchanges) {
         _journals.pop_back();
     }
 }
+
+void SimulateHost::set_nonce(const address& addr, uint64_t nonce) {
+    _nonce_map[addr] = nonce;
+}
+
 }

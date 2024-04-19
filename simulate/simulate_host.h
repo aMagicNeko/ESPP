@@ -112,7 +112,7 @@ public:
     Result call(const evmc_message& msg) noexcept override;
 
     /// @copydoc evmc_host_interface::get_tx_context
-    evmc_tx_context get_tx_context() const noexcept override;
+    const evmc_tx_context* get_tx_context() const noexcept override;
 
     /// @copydoc evmc_host_interface::get_block_hash
     bytes32 get_block_hash(int64_t block_number) const noexcept override;
@@ -142,6 +142,7 @@ public:
         return _logs;
     }
     evmc_message prepare_message(evmc_message msg, uint64_t nonce);
+    void set_nonce(const address& addr, uint64_t nonce);
 private:
     void roll_back(uint32_t log_index, uint32_t changes_index);
     void update_balance(const address& address, const bytes32& value, bool add = true);
@@ -154,6 +155,7 @@ private:
     butil::FlatSet<address, std::hash<address>> _account_access_status_set;
     butil::FlatMap<address, butil::FlatSet<bytes32, std::hash<bytes32>>, std::hash<address>> _storage_access_status_map;
     butil::FlatMap<address, butil::FlatMap<bytes32, bytes32, std::hash<bytes32>>, std::hash<address>> _transient_storage;
+    butil::FlatMap<address, uint64_t, std::hash<address>> _nonce_map;
     VM* _vm;
     std::vector<JournalBase> _journals;
     std::vector<LogEntry> _logs;

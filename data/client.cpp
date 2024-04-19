@@ -263,7 +263,12 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
             }
         }
         LOG(INFO) << "pending tx:" << j.dump();
-        TxPool::instance()->add_tx(tx);
+        if (!FLAGS_simulate_check) [[likely]] {
+            TxPool::instance()->add_tx(tx);
+        }
+        else [[unlikely]] {
+            TxPool::instance()->add_simulate_tx(tx);
+        }
         //BLOCK_LOG("pending transaction: [from=%s][nonce=%lu][priorityFee=%lu][gas=%lu][value=%s][to=%s][input=%s]", 
                 //from.c_str(), nonce, priority_fee, gas, value.str().c_str(), to.c_str(), input.c_str());
         return 0;

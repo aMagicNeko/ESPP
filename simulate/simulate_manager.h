@@ -54,6 +54,8 @@ struct LogEntry {
     {
         return addr == other.addr && data == other.data && topics == other.topics;
     }
+
+    std::string to_string() const;
 };
 
 class SimulateManager : public Singleton<SimulateManager> {
@@ -88,11 +90,14 @@ private:
     VM* _vm;
     // pending block head info
     uint64_t _block_number;
-    uint64_t _time_stamp;
+    uint64_t _request_block_number; //for request, =block_number if simulate, otherwise 0
+    int64_t _time_stamp;
     uint64_t _gas_limit;
     uint256be _prev_randao;
-    uint64_t _chain_id;
+    bytes32 _chain_id;
     uint256be _base_fee;
+    address _block_coinbase;
+    uint256be _blob_base_fee;
     // for simulate check
     std::vector<Result> _results;
     std::vector<std::vector<LogEntry>> _logs;

@@ -501,7 +501,7 @@ public:
     virtual Result call(const evmc_message& msg) noexcept = 0;
 
     /// @copydoc evmc_host_interface::get_tx_context
-    virtual evmc_tx_context get_tx_context() const noexcept = 0;
+    virtual const evmc_tx_context* get_tx_context() const noexcept = 0;
 
     /// @copydoc evmc_host_interface::get_block_hash
     virtual bytes32 get_block_hash(int64_t block_number) const noexcept = 0;
@@ -600,7 +600,7 @@ public:
     }
 
     /// @copydoc HostInterface::get_tx_context()
-    evmc_tx_context get_tx_context() const noexcept final { return host->get_tx_context(context); }
+    const evmc_tx_context* get_tx_context() const noexcept final { return host->get_tx_context(context); }
 
     bytes32 get_block_hash(int64_t number) const noexcept final
     {
@@ -858,7 +858,7 @@ inline evmc_result call(evmc_host_context* h, const evmc_message* msg) noexcept
     return Host::from_context(h)->call(*msg).release_raw();
 }
 
-inline evmc_tx_context get_tx_context(evmc_host_context* h) noexcept
+inline const evmc_tx_context* get_tx_context(evmc_host_context* h) noexcept
 {
     return Host::from_context(h)->get_tx_context();
 }
