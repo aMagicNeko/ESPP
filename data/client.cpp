@@ -443,7 +443,7 @@ int ClientBase::write_and_wait(json& j) {
 
 int ClientBase::write(const json &param) {
     bthread_mutex_lock(&_write_mutex);
-    usleep(FLAGS_write_wait_ms);
+    //usleep(FLAGS_write_wait_ms);
     int ret = _write(param);
     bthread_mutex_unlock(&_write_mutex);
     return ret;

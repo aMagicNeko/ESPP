@@ -1,6 +1,21 @@
+#pragma once
 #include "data/client.h"
 #include "util/common.h"
 #include "util/json_parser.h"
+
+struct LogEntry {
+    std::string address;
+    std::string data;
+    std::vector<std::string> topics;
+    LogEntry() {}
+    LogEntry(const json& j) {
+        address = j["address"];
+        data = j["data"];
+        for (auto& t : j["topics"]) {
+            topics.push_back(t);
+        }
+    }
+};
 
 inline std::string uint64_to_str(uint64_t x) {
     std::stringstream ss;
@@ -234,6 +249,68 @@ inline int request_head_by_number(ClientBase* client, uint64_t block_number, int
     }
     if (parse_json(json_data["result"], "gasLimit", gas_limit) != 0) [[unlikely]] {
         LOG(ERROR) << "get gas_limit error" << json_data.dump();
+    }
+    return 0;
+}
+
+inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_t end_block, const std::vector<std::string>& topics, std::vector<LogEntry>& logs) {
+    json json_data = {
+        {"jsonrpc", "2.0"},
+        {"method", "eth_getLogs"},
+        {"params", 
+            {
+                {{"fromBlock", "0x" + uint64_to_str(start_block)}, {"toBlock", "0x" + uint64_to_str(end_block)}}
+            },
+        },
+        {"id", 1}
+    };
+    for (const std::string& topic:topics) {
+        json_data["params"][0]["topics"].push_back(topic);
+    }
+    LOG(INFO) << "start to get logs:" << json_data.dump();
+    if (client->write_and_wait(json_data) !=0 ) [[unlikely]] {
+        LOG(ERROR) << "get_filter_logs failed";
+        return -1;
+    }
+    if (json_data.find("result") == json_data.end()) [[unlikely]] {
+        LOG(ERROR) << "get logs failed" << json_data.dump();
+        return -1;
+    }
+    for (auto &it : json_data["result"]) {
+        if (it.find("removed") == it.end()) [[unlikely]] {
+            LOG(ERROR) << "get logs failed: " << json_data.dump();
+            return -1;
+        }
+        if (it["removed"]) [[unlikely]] {
+            continue;
+        }
+        logs.push_back(LogEntry(it));
+    }
+    return 0;
+}
+
+inline int request_call(ClientBase* client, const std::string& address, const std::string& method, std::string& data, uint64_t block_number = 0) {
+    std::string block = "latest";
+    if (block_number != 0) [[unlikely]] {
+        block = "0x" + uint64_to_str(block_number);
+    }
+    std::string from = "0xa22cf23D58977639e05B45A3Db7dF6D4a91eb892";
+    json json_data = {
+        {"jsonrpc", "2.0"},
+        {"method", "eth_call"},
+        {"params", {
+            {{"from", from}, {"to", address}, {"data", method}},
+            block
+        }},
+        {"id", 1}
+    };  
+    if (client->write_and_wait(json_data) != 0) [[unlikely]] {
+        LOG(ERROR) << "request_call failed";
+        return -1;
+    }
+    if (parse_json(json_data, "result", data) != 0) [[unlikely]] {
+        LOG(ERROR) << "eth_call failed: " << json_data.dump();
+        return -1;
     }
     return 0;
 }

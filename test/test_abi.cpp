@@ -4,6 +4,7 @@
 #include "data/websocket.h"
 #include "data/secure_websocket.h"
 #include "data/tx_pool.h"
+#include "search/pool_manager.h"
 DEFINE_string(host, "45.250.254.213", "RPC host");
 DEFINE_string(port, "8546", "RPC port");
 DEFINE_string(path, "/", "RPC path");
@@ -23,6 +24,7 @@ int main (int argc, char **argv) {
         //bthread_t bid;
         //bthread_start_urgent(&bid, NULL, test, (void*)(&ws));
         TxPool::instance()->init(&ws);
+        PoolManager::instance()->init(&ws);
         //bthread_join(bid, NULL);
         ws.subscribe_headers();
         ws.subscribe_transactions();
@@ -39,6 +41,7 @@ int main (int argc, char **argv) {
     //bthread_t bid;
     //bthread_start_urgent(&bid, NULL, test, (void*)(&ws));
     TxPool::instance()->init(&ws);
+    PoolManager::instance()->init(&ws);
     //bthread_join(bid, NULL);
     ws.subscribe_headers();
     ws.subscribe_transactions();

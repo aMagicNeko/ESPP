@@ -40,6 +40,7 @@
 #include "util/singleton.h"
 #include "util/lock_guard.h"
 using uint256_t = boost::multiprecision::uint256_t;
+using uint128_t = boost::multiprecision::uint128_t;
 using json = nlohmann::json;
 
 template <typename T, typename Z>

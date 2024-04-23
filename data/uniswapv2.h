@@ -1,18 +1,16 @@
 #pragma once
-#include "data/abi.h"
+#include "data/pool_base.h"
 
-class UniswapV2Abi : public AbiBase {
+class UniswapV2Pool : public PoolBase {
 public:
-    int init(ClientBase* client) override;
-    int get_data(ClientBase* client, uint64_t block_num, const std::vector<std::string>& pools) override;
-    int on_event(uint64_t pool_index, const json& json_data) override;
-    std::string get_logs_head() override;
+    static int get_pools(ClientBase* client, std::vector<std::string>& pools);
+    static int get_data(ClientBase* client, uint64_t block_num, const std::vector<std::string>& pools);
+    static void add_topics(std::vector<std::string>& topics);
+    UniswapV2Pool(uint32_t token1_arg, uint32_t token2_arg, std::string address_arg, uint256_t reserve0_arg, uint256_t reserve1_arg);
+    int on_event(const LogEntry& log) override;
 private:
-    std::vector<uint256_t> _reserve0;
-    std::vector<uint256_t> _reserve1;
-    std::string _mint_head;
-    std::string _burn_head;
-    std::string _swap_head;
-    std::string _sync_head;
-    std::string _transfer_head;
+    uint256_t _reserve0;
+    uint256_t _reserve1;
 };
+
+const int MIN_LIQ = 1000;

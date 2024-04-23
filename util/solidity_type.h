@@ -172,6 +172,8 @@ public:
     }
 };
 
+class ClientBase;
+
 class MultiCall : public SolidityType {
 private:
     std::vector<Call> calls;
@@ -220,6 +222,9 @@ public:
         calls.clear();
     }
 
+    // 通过client获取结果, 所有调用必须成功
+    // @param res: bytes data of each call unit
+    int request_result(ClientBase* client, std::vector<std::string>& res, uint64_t block_num);
     // @return {bool(success), bytes(data)}
     // @param ***** (不含0x)
     static int decode(const std::string& result, std::vector<std::string>& res) {
