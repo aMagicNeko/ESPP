@@ -1,5 +1,5 @@
 #include "data/uniswapv2.h"
-#include "util/solidity_type.h"
+#include "util/type.h"
 #include "data/client.h"
 #include "data/tx_pool.h"
 #include "util/json_parser.h"
@@ -11,17 +11,17 @@ DEFINE_int32(batch_size, 500, "batch size of multicall");
 DEFINE_int32(bthread_limit, 50, "bthread limit");
 DECLARE_int32(long_request_failed_limit);
 
-static const std::string s_log_topic = "0x" + HashAndTakeAllBytes("Sync(uint112,uint112)");
+static const Bytes32 s_log_topic = Bytes32(HashAndTakeAllBytes("Sync(uint112,uint112)"));
 
-int UniswapV2Pool::get_pools(ClientBase* client, std::vector<std::string>& pools) {
-    std::string factory_address = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
+int UniswapV2Pool::get_pools(ClientBase* client, std::vector<Address>& pools) {
+    Address factory_address("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
     std::string method = "0x" + HashAndTakeFirstFourBytes("allPairsLength()");
-    std::string result;
+    DBytes result;
     if (request_call(client, factory_address, method, result) != 0) {
         LOG(ERROR) << "call allPairsLength() failed";
         return -1;
     }
-    uint64_t npools = Uint<64>::decode(result.substr(2)).convert_to<uint64_t>();
+    uint64_t npools = result.to_uint256(0, 32).convert_to<uint64_t>();
     LOG(INFO) << "UniswapV2 pool_num: " << npools;
     std::string head = HashAndTakeFirstFourBytes("allPairs(uint256)");
     MultiCall multi_call(1);
@@ -47,18 +47,17 @@ int UniswapV2Pool::get_pools(ClientBase* client, std::vector<std::string>& pools
                     LOG(ERROR) << "decode dbytes failed";
                     return -1;
                 }
-                std::string pool_address = Address::decode(rs[0]);
+                Address pool_address = Address::decode(rs[0]);
                 pools.push_back(pool_address);
-                LOG(INFO) << "pool " << pools.size() << ": " << pool_address;
+                LOG(INFO) << "pool " << pools.size() << ": " << pool_address.to_string();
             }
-            break;
         }
     }
     LOG(INFO) << "UniswapV2 init success ";
     return 0;
 }
 
-int UniswapV2Pool::get_data(ClientBase* client, uint64_t block_num, const std::vector<std::string>& pools) {
+int UniswapV2Pool::get_data(ClientBase* client, uint64_t block_num, const std::vector<Address>& pools) {
     std::vector<uint256_t> _reserve0;
     std::vector<uint256_t> _reserve1;
     std::string head = HashAndTakeFirstFourBytes("getReserves()");
@@ -119,13 +118,13 @@ int UniswapV2Pool::get_data(ClientBase* client, uint64_t block_num, const std::v
                     LOG(ERROR) << "decode dbytes failed";
                     return -1;
                 }
-                std::string token_address0 = Address::decode(rs[0]);
+                Address token_address0 = Address::decode(rs[0]);
                 rs.clear();
                 if (DBytes::decode_32(res[k + 1], rs) != 0 || rs.size() != 1) {
                     LOG(ERROR) << "decode dbytes failed";
                     return -1;
                 }
-                std::string token_address1 = Address::decode(rs[0]);
+                Address token_address1 = Address::decode(rs[0]);
                 PoolManager::instance()->add_uniswapv2_pool(token_address0, token_address1, pools[j], _reserve0[j], _reserve1[j]);
             }
         }
@@ -135,26 +134,32 @@ int UniswapV2Pool::get_data(ClientBase* client, uint64_t block_num, const std::v
     return 0;
 }
 
-void UniswapV2Pool::add_topics(std::vector<std::string>& topics) {
+void UniswapV2Pool::add_topics(std::vector<Bytes32>& topics) {
     topics.push_back(s_log_topic);
 }
 
-UniswapV2Pool::UniswapV2Pool(uint32_t token1_arg, uint32_t token2_arg, std::string address_arg, uint256_t reserve0_arg, uint256_t reserve1_arg) : PoolBase(token1_arg, token1_arg, address_arg) {
+UniswapV2Pool::UniswapV2Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint256_t reserve0_arg, uint256_t reserve1_arg) : PoolBase(token1_arg, token1_arg, address_arg) {
     _reserve0 = reserve0_arg;
     _reserve1 = reserve1_arg;
 }
 
 int UniswapV2Pool::on_event(const LogEntry& log) {
     LockGuard lock(&_mutex);
-    std::string topic = log.topics[0];
-    if (topic != s_log_topic || log.data.size() != 64 * 2 + 2) [[unlikely]] {
-        LOG(ERROR) << "invalid swap data: " << log.data;
+    if (!(log.topics[0] == s_log_topic) || log.data.size() != 32 * 2) [[unlikely]] {
+        LOG(ERROR) << "invalid swap data: " << log.data.to_string();
         return -1;
     }
-    uint256_t amount0 = Uint<256>::decode(log.data.substr(2, 64));
-    uint256_t amount1 = Uint<256>::decode(log.data.substr(66, 64));
+    uint256_t amount0 = log.data.to_uint256(0, 32);
+    uint256_t amount1 = log.data.to_uint256(32, 64);
     _reserve0 = amount0;
     _reserve1 = amount1;
     return 0;
 }
 
+void UniswapV2Pool::save_to_file(std::ofstream& file) {
+    PoolType type = UniswapV2;
+    file.write(reinterpret_cast<char*>(&type), sizeof(type));
+    file.write(reinterpret_cast<char*>(this), sizeof(PoolBase));
+    ::save_to_file(_reserve0, file);
+    ::save_to_file(_reserve1, file);
+}

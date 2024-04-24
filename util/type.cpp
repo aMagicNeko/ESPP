@@ -2,36 +2,22 @@
 #include <cryptopp/hex.h>
 #include <algorithm>
 #include "data/request.h"
-static int check_byte_order() {
-    int x = 1;
-    char *p = (char *)&x;
-    if (*p == 1) {
-        return 0; // little endian
-    }
-    else {
-        return 1; // big endian
-    }
-}
+#include "util/type.h"
 static const std::string multicall_address = "0xcA11bde05977b3631167028862bE2a173976CA11";
 static const std::string muticall_head = HashAndTakeFirstFourBytes("tryAggregate(bool,(address,bytes)[])");
 
-static int s_byte_order = check_byte_order();
-
-// 不含0x
+// return without 0x
 std::string HashAndTakeFirstFourBytes(const std::string& input) {
-    // 创建Keccak-256哈希对象
     CryptoPP::Keccak_256 hash;
     std::string digest;
     
-    // 计算哈希值
     hash.Update(reinterpret_cast<const CryptoPP::byte*>(input.data()), input.size());
     digest.resize(hash.DigestSize());
     hash.Final(reinterpret_cast<CryptoPP::byte*>(&digest[0]));
     
-    // 将前4个字节转换为十六进制字符串
     std::string hexDigest;
     CryptoPP::HexEncoder encoder;
-    encoder.Put(reinterpret_cast<const CryptoPP::byte*>(digest.data()), 4); // 只取前4个字节
+    encoder.Put(reinterpret_cast<const CryptoPP::byte*>(digest.data()), 4);
     encoder.MessageEnd();
     
     CryptoPP::word64 size = encoder.MaxRetrievable();
@@ -46,11 +32,9 @@ std::string HashAndTakeFirstFourBytes(const std::string& input) {
 }
 
 std::string HashAndTakeAllBytes(const unsigned char* data, size_t data_size) {
-    // 创建Keccak-256哈希对象
     CryptoPP::Keccak_256 hash;
     std::string digest;
     
-    // 计算哈希值
     hash.Update(reinterpret_cast<const CryptoPP::byte*>(data), data_size);
     digest.resize(hash.DigestSize());
     hash.Final(reinterpret_cast<CryptoPP::byte*>(&digest[0]));
@@ -74,7 +58,7 @@ std::string HashAndTakeAllBytes(const unsigned char* data, size_t data_size) {
     return hexDigest;
 }
 
-// 不含0x
+// no 0x
 std::string HashAndTakeAllBytes(const std::string& input) {
     return HashAndTakeAllBytes(reinterpret_cast<const CryptoPP::byte*>(input.data()), input.size());
 }
@@ -111,4 +95,19 @@ int MultiCall::request_result(ClientBase* client, std::vector<std::string>& res,
         res.push_back(tmp);
     }
     return 0;
+}
+
+Address::Address(const Bytes32& b) {
+    memcpy(value.bytes, b.value.bytes + 12, sizeof(value.bytes));
+}
+// Helper function to convert a single hex character to a byte
+std::string LogEntry::to_string() const {
+    std::ostringstream oss;
+    oss << "Address: " << address.to_string() << '\n';
+    oss << "Data: " << data.to_string() << '\n';
+    oss << "Topics: ";
+    for(auto topic : topics)
+        oss << topic.to_string() << ' ';
+    oss << '\n';
+    return oss.str();
 }

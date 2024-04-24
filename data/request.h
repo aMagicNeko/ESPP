@@ -2,33 +2,19 @@
 #include "data/client.h"
 #include "util/common.h"
 #include "util/json_parser.h"
-
-struct LogEntry {
-    std::string address;
-    std::string data;
-    std::vector<std::string> topics;
-    LogEntry() {}
-    LogEntry(const json& j) {
-        address = j["address"];
-        data = j["data"];
-        for (auto& t : j["topics"]) {
-            topics.push_back(t);
-        }
-    }
-};
-
+#include "util/type.h"
 inline std::string uint64_to_str(uint64_t x) {
     std::stringstream ss;
     ss << std::hex << x;
     return ss.str();
 }
 
-inline int request_balance(ClientBase* client, const std::string& addr_str, uint256_t& balence_data, uint64_t block_number = 0) {
+inline int request_balance(ClientBase* client, const Address& address, uint256_t& balence_data, uint64_t block_number = 0) {
     json json_data = {
         {"jsonrpc", "2.0"},
         {"method", "eth_getBalance"},
         {"params", {
-            addr_str,
+            address.to_string(),
             "latest"
         }},
         {"id", 1}
@@ -47,12 +33,12 @@ inline int request_balance(ClientBase* client, const std::string& addr_str, uint
     return 0;
 }
 
-inline int request_code(ClientBase* client, const std::string& addr_str, std::string& code, uint64_t block_number = 0) {
+inline int request_code(ClientBase* client, const Address& address, DBytes& code, uint64_t block_number = 0) {
     json json_data = {
         {"jsonrpc", "2.0"},
         {"method", "eth_getCode"},
         {"params", {
-            addr_str,
+            address.to_string(),
             "latest"
         }},
         {"id", 1}
@@ -64,20 +50,22 @@ inline int request_code(ClientBase* client, const std::string& addr_str, std::st
         LOG(ERROR) << "get code failed:" << json_data.dump();
         return -1;
     }
-    if (parse_json(json_data, "result", code) != 0) [[unlikely]] {
+    std::string code_str;
+    if (parse_json(json_data, "result", code_str) != 0) [[unlikely]] {
         LOG(ERROR) << "get code failed:" << json_data.dump();
         return -1;
     }
+    code = DBytes(code_str.substr(2));
     return 0;
 }
 
-inline int request_storage(ClientBase* client, const std::string& addr_str, const std::string& key, std::string& result, uint64_t block_number) {
+inline int request_storage(ClientBase* client, const Address& address, const Bytes32& key, Bytes32& result, uint64_t block_number) {
     json json_data = {
         {"jsonrpc", "2.0"},
         {"method", "eth_getStorageAt"},
         {"params", {
-            addr_str,
-            key,
+            address.to_string(),
+            "0x" + key.to_string(),
             "latest"
         }},
         {"id", 1}
@@ -89,10 +77,12 @@ inline int request_storage(ClientBase* client, const std::string& addr_str, cons
         LOG(ERROR) << "get storage failed:" << json_data.dump();
         return -1;
     }
-    if (parse_json(json_data, "result", result) != 0) [[unlikely]] {
+    std::string result_str;
+    if (parse_json(json_data, "result", result_str) != 0) [[unlikely]] {
         LOG(ERROR) << "get storage failed:" << json_data.dump();
         return -1;
     }
+    result = Bytes32(result_str.substr(2));
     return 0;
 }
 
@@ -208,8 +198,8 @@ inline int request_tx_receipt(ClientBase* client, std::string hash, json& res) {
     return 0;
 }
 
-inline int request_nonce(ClientBase* client, std::string addr, uint64_t& nonce, uint64_t block_number = 0) {
-    json json_data = {{"jsonrpc", "2.0"}, {"method", "eth_getTransactionCount"}, {"params", {addr, "latest"}}, {"id", 1}};
+inline int request_nonce(ClientBase* client, const Address& addr, uint64_t& nonce, uint64_t block_number = 0) {
+    json json_data = {{"jsonrpc", "2.0"}, {"method", "eth_getTransactionCount"}, {"params", {"0x" + addr.to_string(), "latest"}}, {"id", 1}};
     if (block_number != 0) [[unlikely]] {
         json_data["params"][0] = "0x" + uint64_to_str(block_number);
     }
@@ -253,7 +243,7 @@ inline int request_head_by_number(ClientBase* client, uint64_t block_number, int
     return 0;
 }
 
-inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_t end_block, const std::vector<std::string>& topics, std::vector<LogEntry>& logs) {
+inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_t end_block, const std::vector<Bytes32>& topics, std::vector<LogEntry>& logs) {
     json json_data = {
         {"jsonrpc", "2.0"},
         {"method", "eth_getLogs"},
@@ -264,11 +254,11 @@ inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_
         },
         {"id", 1}
     };
-    for (const std::string& topic:topics) {
-        json_data["params"][0]["topics"].push_back(topic);
+    for (const Bytes32& topic:topics) {
+        json_data["params"][0]["topics"].push_back(topic.to_string());
     }
-    LOG(INFO) << "start to get logs:" << json_data.dump();
-    if (client->write_and_wait(json_data) !=0 ) [[unlikely]] {
+    //LOG(INFO) << "start to get logs:" << json_data.dump();
+    if (client->write_and_wait(json_data) !=0) [[unlikely]] {
         LOG(ERROR) << "get_filter_logs failed";
         return -1;
     }
@@ -285,11 +275,12 @@ inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_
             continue;
         }
         logs.push_back(LogEntry(it));
+        //LOG(INFO) << "matched log:" <<  logs.back().to_string();
     }
     return 0;
 }
 
-inline int request_call(ClientBase* client, const std::string& address, const std::string& method, std::string& data, uint64_t block_number = 0) {
+inline int request_call(ClientBase* client, const Address& address, const std::string& method, std::string& data, uint64_t block_number = 0) {
     std::string block = "latest";
     if (block_number != 0) [[unlikely]] {
         block = "0x" + uint64_to_str(block_number);
@@ -299,18 +290,29 @@ inline int request_call(ClientBase* client, const std::string& address, const st
         {"jsonrpc", "2.0"},
         {"method", "eth_call"},
         {"params", {
-            {{"from", from}, {"to", address}, {"data", method}},
+            {{"from", from}, {"to", address.to_string()}, {"data", method}, {"gas", "0xFFFFFFFFFFFFFFFF"}},
             block
         }},
         {"id", 1}
     };  
+    //LOG(INFO) << "request_call:" << json_data.dump();
     if (client->write_and_wait(json_data) != 0) [[unlikely]] {
         LOG(ERROR) << "request_call failed";
         return -1;
     }
+    //LOG(INFO) << "request_call ret:" << json_data.dump();
     if (parse_json(json_data, "result", data) != 0) [[unlikely]] {
         LOG(ERROR) << "eth_call failed: " << json_data.dump();
         return -1;
     }
+    return 0;
+}
+
+inline int request_call(ClientBase* client, const Address& address, const std::string& method, DBytes& data, uint64_t block_number = 0) {
+    std::string data_str;
+    if (request_call(client, address, method, data_str, block_number) != 0) {
+        return -1;
+    }
+    data = DBytes(data_str.substr(2));
     return 0;
 }

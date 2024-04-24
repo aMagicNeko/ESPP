@@ -6,13 +6,14 @@ public:
     const static std::string log_topic;
     static int get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& pools);
     static int get_data(ClientBase* client, uint64_t block_num, std::vector<UniswapV3Pool*>& pools);
-    static void add_topics(std::vector<std::string>& topics);
+    static void add_topics(std::vector<Bytes32>& topics);
     // 每次新block来时 在处理完logs之后调用
     static int update_data(ClientBase* client, uint64_t block_num = 0);
-    const int fee;
-    const int tick_space;
-    UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, std::string address_arg, uint64_t fee_arg, uint64_t tick_space_arg, int tick_size);
+    int fee;
+    int tick_space;
+    UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint64_t fee_arg, uint64_t tick_space_arg, int tick_size);
     int on_event(const LogEntry& log) override;
+    void save_to_file(std::ofstream& file) override;
     uint256_t sqrt_price;
     uint32_t tick;
     std::vector<uint128_t> liquidities;

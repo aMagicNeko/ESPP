@@ -2,6 +2,7 @@
 #include "util/common.h"
 #include "util/singleton.h"
 #include "data/client.h"
+#include "util/type.h"
 #include <simulate/evmc.hpp>
 #include <functional>
 #include <evmone/evmone.h>
@@ -11,15 +12,8 @@ class Transaction;
 namespace evmc {
 class Code {
 public:
-    //Code() {}
     Code(const std::string& str);
     Code(const uint8_t* ptr, size_t len);
-    //~Code() = default;
-    //Code(const Code& code) = default;
-    //Code& operator=(const Code& code) = default;
-    //Code(Code&& code) noexcept = default;
-    //Code& operator=(Code&& code) noexcept = default;
-
     const uint8_t* data() const {
         return _data.data();
     }
@@ -38,25 +32,6 @@ private:
 };
 
 class SimulateHost;
-
-struct LogEntry {
-    address addr;               // 日志来源地址
-    std::vector<uint8_t> data;  // 日志数据
-    std::vector<bytes32> topics;// 日志主题
-
-    // 构造函数，用于初始化日志条目
-    LogEntry(const address& addr, const uint8_t* data, size_t data_size, const bytes32 topics[], size_t num_topics)
-    : addr(addr), data(data, data + data_size), topics(topics, topics + num_topics) {
-        // 这里使用了vector的范围构造函数来初始化data和topics
-    }
-    /// Equal operator.
-    bool operator==(const LogEntry& other) const noexcept
-    {
-        return addr == other.addr && data == other.data && topics == other.topics;
-    }
-
-    std::string to_string() const;
-};
 
 class SimulateManager : public Singleton<SimulateManager> {
 public:

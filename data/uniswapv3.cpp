@@ -1,5 +1,5 @@
 #include "data/uniswapv3.h"
-#include "util/solidity_type.h"
+#include "util/type.h"
 #include "data/client.h"
 #include "data/tx_pool.h"
 #include "util/json_parser.h"
@@ -13,12 +13,12 @@ DECLARE_int32(long_request_failed_limit);
 DEFINE_int32(uniswapv3_half_tick_count, 6, "half of tick count to keep updating");
 DECLARE_int32(logs_step);
 
-static const std::string factory_address = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
+static const Address factory_address("0x1F98431c8aD98523631AE4a59f267346ea31F984");
 static std::vector<UniswapV3Pool*> s_on_event_pools;
-static butil::FlatSet<std::string> s_pool_address_set;
+static butil::FlatSet<Address, std::hash<Address>> s_pool_address_set;
+
 int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& pools) {
     s_pool_address_set.init(1);
-    std::string pool_create_head = "0x" + HashAndTakeAllBytes("PoolCreated(address,address,uint24,int24,address)");
     uint64_t start_block = 0;
     if (get_start_block(client, factory_address, start_block) != 0) {
         LOG(ERROR) << "get pools failed";
@@ -30,8 +30,8 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
         LOG(ERROR) << "request block number failed";
         return -1;
     }
-    std::vector<std::string> topics;
-    topics.push_back(pool_create_head);
+    std::vector<Bytes32> topics;
+    topics.push_back(HashAndTakeAllBytes("PoolCreated(address,address,uint24,int24,address)"));
     std::vector<LogEntry> logs;
     for (uint64_t cur = start_block; ; ) {
         uint64_t next = cur + FLAGS_logs_step;
@@ -49,15 +49,37 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
         cur = next;
         for (auto& log: logs) {
             if (log.address != factory_address) {
+                LOG(INFO) << "not matched factory address::" << log.address.to_string();
                 continue;
             }
-            std::string token1 = Address::decode(log.data.substr(2, 64));
-            std::string token2 = Address::decode(log.data.substr(66, 64));
-            uint64_t fee = static_cast<uint64_t>(Uint<64>::decode(log.data.substr(130, 64)));
-            uint64_t tick_space = static_cast<uint64_t>(Uint<64>::decode(log.data.substr(194, 64)));
-            std::string pool = Address::decode(log.data.substr(158, 64));
-            pools.push_back(PoolManager::instance()->add_uniswapv3_pool(pool, token1, token2, fee, tick_space));
-            LOG(INFO) << "UniswapV3 pool:" << pool;
+            if (log.data.size() != 64) [[unlikely]] {
+                LOG(INFO) << "wrong log data:" << log.data.to_string();
+                continue;
+            }
+            if (log.topics.size() != 4) [[unlikely]] {
+                LOG(INFO) << "wrong log topics:" << log.topics[0].to_string();
+                continue;
+            }
+            /*
+            event PoolCreated(
+            address indexed token0,
+            address indexed token1,
+            uint24 indexed fee,
+            int24 tickSpacing,
+            address pool
+            );
+            */
+            Address token1(log.topics[1]);
+            Address token2(log.topics[2]);
+            uint64_t fee = log.topics[3].to_uint256().convert_to<uint64_t>();
+            uint64_t tick_space = log.data.to_uint256(0, 32).convert_to<uint64_t>();;
+            Address pool = log.data.to_address(32, 64);
+            auto p = PoolManager::instance()->add_uniswapv3_pool(pool, token1, token2, fee, tick_space);
+            if (p) {
+                pools.push_back(p);
+            }
+            // save to file
+            LOG(INFO) << "UniswapV3 pool:" << pool.to_string();
         }
     }
     return 0;
@@ -100,7 +122,7 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
             }
         }
     }
-    assert(j == size);
+    assert(j == pools.size());
     // get neighbor ticks
     j = 0;
     uint32_t batch_size = FLAGS_batch_size / (2 * FLAGS_uniswapv3_half_tick_count + 1);
@@ -147,14 +169,14 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
     return 0;
 }
 
-void UniswapV3Pool::add_topics(std::vector<std::string>& topics) {
-    topics.push_back("0x" + HashAndTakeAllBytes("Mint(address,address,int24,int24,uint128,uint256,uint256)"));
-    topics.push_back("0x" + HashAndTakeAllBytes("Burn(address,int24,int24,uint128,uint256,uint256)"));
-    topics.push_back("0x" + HashAndTakeAllBytes("Swap(address,address,int256,int256,uint160,uint128,int24)"));
-    topics.push_back("0x" + HashAndTakeAllBytes("Flash(address,address,uint256,uint256,uint256,uint256)"));
+void UniswapV3Pool::add_topics(std::vector<Bytes32>& topics) {
+    topics.push_back(Bytes32(HashAndTakeAllBytes("Mint(address,address,int24,int24,uint128,uint256,uint256)")));
+    topics.push_back(HashAndTakeAllBytes("Burn(address,int24,int24,uint128,uint256,uint256)"));
+    topics.push_back(HashAndTakeAllBytes("Swap(address,address,int256,int256,uint160,uint128,int24)"));
+    topics.push_back(HashAndTakeAllBytes("Flash(address,address,uint256,uint256,uint256,uint256)"));
 }
 
-UniswapV3Pool::UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, std::string address_arg, uint64_t fee_arg, uint64_t tick_space_arg, int tick_size) 
+UniswapV3Pool::UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint64_t fee_arg, uint64_t tick_space_arg, int tick_size) 
         :  PoolBase(token1_arg, token2_arg, address_arg), fee(fee_arg), tick_space(tick_space_arg) {
     liquidities.resize(tick_size);
 }
@@ -178,4 +200,19 @@ int UniswapV3Pool::update_data(ClientBase* client, uint64_t block_num) {
     s_on_event_pools.clear();
     s_pool_address_set.clear();
     return 0;
+}
+
+void UniswapV3Pool::save_to_file(std::ofstream& file) {
+    PoolType type = UniswapV3;
+    file.write(reinterpret_cast<char*>(&type), sizeof(type));
+    file.write(reinterpret_cast<char*>(this), sizeof(PoolBase));
+    file.write(reinterpret_cast<char*>(&fee), sizeof(fee));
+    file.write(reinterpret_cast<char*>(&tick_space), sizeof(tick_space));
+    ::save_to_file(sqrt_price, file);
+    file.write(reinterpret_cast<char*>(&tick), sizeof(tick));
+    size_t liq_size = liquidities.size();
+    file.write(reinterpret_cast<char*>(&liq_size), sizeof(size_t));
+    for (uint128_t x : liquidities) {
+        ::save_to_file(x, file);
+    }
 }

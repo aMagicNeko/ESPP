@@ -252,14 +252,12 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
         auto tx = std::make_shared<Transaction>(Transaction{int64_t(nonce), priority_fee, value, from, to, gas, input, 0ul, hash, time_stamp});
         if (j.find("accessList") != j.end()) {
             for (auto jj : j["accessList"]) {
-                std::vector<std::string> tmp;
-                tmp.push_back(jj["address"]);
-                //LOG(INFO) << "add accessList:" << tmp.back();
+                AccessListEntry entry;
+                entry.address = jj["address"].get<std::string>();
                 for (auto jjj : jj["storage"]) {
-                    tmp.push_back(jjj);
-                    LOG(INFO) << tmp.back();
+                    entry.key.push_back(static_cast<std::string>(jjj).substr(2));
                 }
-                tx->access_list.push_back(tmp);
+                tx->access_list.push_back(entry);
             }
         }
         LOG(INFO) << "pending tx:" << j.dump();

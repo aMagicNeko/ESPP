@@ -81,7 +81,7 @@ void TxPool::check_order(__gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pb
     butil::FlatMap<std::string, uint32_t> map;
     map.init(500);
     uint32_t index = 0;
-    butil::FlatMap<std::string, uint32_t> count_map;
+    butil::FlatMap<Address, uint32_t, std::hash<Address>> count_map;
     count_map.init(500);
     uint32_t count = 0;
     for (std::shared_ptr<Transaction> p: *txs) {
@@ -145,10 +145,10 @@ int TxPool::on_head(const std::string& parent_hash) {
 
 void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
     LockGuard lock(&_mutex);
-    if (tx->from.size() == 0) {
+    if (tx->from == Address()) {
+        // Todo: handle it
         return;
     }
-    //LOG(INFO) << "add tx: " << tx->hash;
     auto account = _accounts.seek(tx->from);
     if (account == NULL) {
         account = _accounts.insert(tx->from, Account());
@@ -158,15 +158,14 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
         account->continuous_nonce = tx->nonce;
     }
     if (tx->nonce < account->nonce) {
-        //LOG(INFO) << "old tx " << tx->hash;
-        // 丢弃旧交易
+        // old tx
         return;
     }
     auto it = account->pending_txs.find(tx->nonce);
-    size_t change_idx = 10000000; // 池中最小的受到影响的tx
+    size_t change_idx = 10000000; // the least index of influenced txs
     if (it != account->pending_txs.end()) {
         //LOG(INFO) << "replace the same nonce " << tx->hash;
-        // replace 同nonce的交易
+        // replace the tx having the same nonce
         auto p = _txs.find(it->second);
         if (p != _txs.end()) {
             change_idx = _txs.order_of_key(*p);
@@ -180,7 +179,7 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
         change_idx = tmp;
     }
     if (tx->nonce <= account->continuous_nonce) {
-        // 更新同一account在这个nonce之后的交易
+        // update account tx
         update_txs(account, tx->nonce);
     }
     evmc::SimulateManager::instance()->notice_change(change_idx);
@@ -218,7 +217,7 @@ void TxPool::update_txs(Account* account, int64_t nonce) {
     account->continuous_nonce = cur;
 }
 
-int TxPool::set_nonce(const std::string& from, uint64_t nonce) {
+int TxPool::set_nonce(const Address& from, uint64_t nonce) {
     LockGuard lock(&_mutex);
     auto p = _accounts.seek(from);
     if (p == NULL) {
@@ -232,7 +231,7 @@ int TxPool::set_nonce(const std::string& from, uint64_t nonce) {
     return 0;
 }
 
-bool TxPool::has_account(const std::string& from) const {
+bool TxPool::has_account(const Address& from) const {
     return _accounts.seek(from) != 0;
 }
 
@@ -272,6 +271,6 @@ int TxPool::get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<u
     return 0;
 }
 
-void TxPool::notice_simulate_result(size_t index, const std::vector<evmc::LogEntry>& logs) {
+void TxPool::notice_simulate_result(size_t index, const std::vector<LogEntry>& logs) {
 
 }

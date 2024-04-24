@@ -74,7 +74,7 @@ class SimulateHost : public Host {
 public:
     virtual ~SimulateHost() noexcept = default;
 
-    SimulateHost(VM* vm, SimulateHost* prev, const std::string& from, uint64_t nonce, const evmc_tx_context& tx_context);
+    SimulateHost(VM* vm, SimulateHost* prev, const Address& from, uint64_t nonce, const evmc_tx_context& tx_context);
     SimulateHost(const SimulateHost&) = default;
     SimulateHost(SimulateHost&&) = default;
     SimulateHost& operator=(SimulateHost&) = default;
@@ -159,8 +159,8 @@ private:
     VM* _vm;
     std::vector<JournalBase> _journals;
     std::vector<LogEntry> _logs;
-    std::string _from; // no 0x
-    uint64_t _nonce; // no 0x
+    Address _from;
+    uint64_t _nonce;
     evmc_tx_context _context; //cur tx
     int _errno; // request client error
     evmc_revision _rev = EVMC_LATEST_STABLE_REVISION;

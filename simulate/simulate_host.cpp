@@ -3,7 +3,7 @@
 #include <iterator>
 #include "util/evmc_type.h"
 namespace evmc {
-SimulateHost::SimulateHost(VM* vm, SimulateHost* prev, const std::string& from, uint64_t nonce, const evmc_tx_context& tx_context) : 
+SimulateHost::SimulateHost(VM* vm, SimulateHost* prev, const Address& from, uint64_t nonce, const evmc_tx_context& tx_context) : 
         _vm(vm), _from(from), _nonce(nonce), _errno(0)   {
     _balance_map.init(1);
     _storage_map.init(1);

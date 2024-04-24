@@ -1,24 +1,12 @@
 #include "simulate/simulate_manager.h"
 #include "data/request.h"
 #include "data/tx_pool.h"
-#include "util/solidity_type.h"
+#include "util/type.h"
 #include "util/evmc_type.h"
 #include "util/latency.h"
 DECLARE_int32(wait_timeout_ms);
 DEFINE_bool(simulate_check, false, "whether using history txs to check the simulation");
 namespace evmc {
-// Helper function to convert a single hex character to a byte
-std::string LogEntry::to_string() const {
-    std::ostringstream oss;
-    oss << "Address: " << evmc_address_to_str(addr) << '\n';
-    oss << "Data: " << to_hex_string(data.data(), data.size()) << '\n';
-    oss << "Topics: ";
-    for(auto topic : topics)
-        oss << to_hex_string(topic.bytes, sizeof(topic.bytes)) << ' ';
-    oss << '\n';
-    return oss.str();
-}
-
 Code::Code(const std::string& str) {
     if (str.size() % 2 != 0)  {
         throw std::invalid_argument("Hex string must have an even length");
@@ -77,9 +65,8 @@ int SimulateManager::get_balance(const address& addr, uint256be& val) {
     if (p == 0) {
         ++_request_count;
         LatencyWrapper latency(_request_latency);
-        std::string addr_str = evmc_address_to_str(addr);
         uint256_t balance_data = 0;
-        if (request_balance(_client, addr_str, balance_data, _request_block_number) != 0) {
+        if (request_balance(_client, addr, balance_data, _request_block_number) != 0) {
             return -1;
         }
         p = _balence_map.insert(addr, uint256_to_bytes32(balance_data));
@@ -98,14 +85,11 @@ int SimulateManager::get_storage(const address& addr, const bytes32& key, bytes3
     if (pp == 0) {
         ++_request_count;
         LatencyWrapper latency(_request_latency);
-        std::string result_str;
-        std::string addr_str = evmc_address_to_str(addr);
-        std::string key_str = bytes32_to_str(key);
-        if (request_storage(_client, addr_str, key_str, result_str, _request_block_number) != 0) {
+        Bytes32 v;
+        if (request_storage(_client, addr, key, v, _request_block_number) != 0) {
             return -1;
         }
-        auto result = str_to_bytes32(result_str.substr(2));
-        pp = p->insert(key, result);
+        pp = p->insert(key, v.value);
     }
     value = *pp;
     return 0;
@@ -116,10 +100,11 @@ int SimulateManager::get_code(const address& addr, std::shared_ptr<Code>* c) {
     std::string addr_str = evmc_address_to_str(addr);
     ++_request_count;
     LatencyWrapper latency(_request_latency);
-    if (request_code(_client, addr_str, code_str, _request_block_number) != 0) {
+    DBytes code_tmp;
+    if (request_code(_client, addr, code_tmp, _request_block_number) != 0) {
         return -1;
     }
-    std::shared_ptr<Code> code = std::make_shared<Code>(code_str.substr(2));
+    std::shared_ptr<Code> code = std::make_shared<Code>(code_tmp._data.data(), code_tmp._data.size());
     _code_map.insert(addr, code);
     //LOG(INFO) << "get code:" << code->to_string();
     if (c != 0) {
@@ -214,18 +199,18 @@ void SimulateManager::notice_change(size_t change_idx) {
     bthread::butex_wake_all(_butex);
 }
 
-//只允许单线程使用
+// only allowed used in a single thread
 evmc_message SimulateManager::build_message(std::shared_ptr<Transaction> tx, int64_t execution_gas_limit) noexcept
 {
-    const auto recipient = tx->to.size() ? str_to_address(tx->to.substr(2)) : evmc::address{};
-    _input = std::make_shared<Code>(tx->input.substr(2));
+    const auto recipient = tx->to.value;
+    _input = std::make_shared<Code>(tx->input._data.data(), tx->input._data.size());
     return {
-        tx->to.size() ? EVMC_CALL : EVMC_CREATE,
+        tx->to.value == address(0) ? EVMC_CALL : EVMC_CREATE,
         0,
         0,
         execution_gas_limit,
         recipient,
-        str_to_address(tx->from.substr(2)),
+        tx->from.value,
         _input->data(),
         _input->size(),
         uint256_to_bytes32(tx->value),
@@ -239,27 +224,24 @@ inline constexpr int64_t num_words(size_t size_in_bytes) noexcept
     return static_cast<int64_t>((size_in_bytes + 31) / 32);
 }
 
-int64_t compute_tx_data_cost(evmc_revision rev, const std::string& input) noexcept
+int64_t compute_tx_data_cost(evmc_revision rev, const DBytes& input) noexcept
 {
     constexpr int64_t zero_byte_cost = 4;
     const int64_t nonzero_byte_cost = rev >= EVMC_ISTANBUL ? 16 : 68;
     int64_t cost = 0;
     for (uint32_t i = 2; i + 1 < input.size(); i += 2)
-        cost += (input[i] == '0' && input[i+1] == '0') ? zero_byte_cost : nonzero_byte_cost;
+        cost += (input._data[i] == 0) ? zero_byte_cost : nonzero_byte_cost;
     return cost;
 }
 
-int64_t compute_access_list_cost(const std::vector<std::vector<std::string>>& access_list) noexcept
+int64_t compute_access_list_cost(const std::vector<AccessListEntry>& access_list) noexcept
 {
     static constexpr auto storage_key_cost = 1900;
     static constexpr auto address_cost = 2400;
 
     int64_t cost = 0;
     for (const auto& a : access_list) {
-        cost += address_cost;
-        for (uint32_t i = 1; i < a.size(); ++i) {
-            cost += static_cast<int64_t>((a[i].size() - 2) / 2) * storage_key_cost;
-        }
+        cost += address_cost + a.key.size() * storage_key_cost;
     }
     return cost;
 }
@@ -269,7 +251,7 @@ int64_t compute_tx_intrinsic_cost(evmc_revision rev, std::shared_ptr<Transaction
     static constexpr auto call_tx_cost = 21000;
     static constexpr auto create_tx_cost = 53000;
     static constexpr auto initcode_word_cost = 2;
-    const auto is_create = !tx->to.size();
+    const auto is_create = tx->to.value == address(0);
     const auto initcode_cost =
         is_create && rev >= EVMC_SHANGHAI ? initcode_word_cost * num_words((tx->input.size() - 2) / 2) : 0;
     const auto tx_cost = is_create && rev >= EVMC_HOMESTEAD ? create_tx_cost : call_tx_cost;
@@ -300,7 +282,7 @@ void SimulateManager::run_in_loop() {
             }
             const evmc_bytes32* blob_hashes = 0; // fake
             uint32_t blob_hash_count = 0; // fake
-            address from = str_to_address(tx->from);
+            address from = tx->from.value;
             bthread_mutex_lock(&_mutex);// for head info or result
             evmc_tx_context context {
                 add_bytes32(bytes32(tx->priority_fee), _base_fee),
@@ -319,7 +301,7 @@ void SimulateManager::run_in_loop() {
                 0
             };
             bthread_mutex_unlock(&_mutex);
-            auto host = std::make_shared<SimulateHost>(_vm, prev, tx->from.substr(2), tx->nonce, context);
+            auto host = std::make_shared<SimulateHost>(_vm, prev, tx->from, tx->nonce, context);
             if (_hosts.size() <= cur) {
                 _hosts.push_back(host);
             }
@@ -329,7 +311,7 @@ void SimulateManager::run_in_loop() {
             host->set_nonce(from, tx->nonce);
             int64_t gas1 = compute_tx_intrinsic_cost(EVMC_LATEST_STABLE_REVISION, tx);
             bytes32 balance(0);
-            get_balance(str_to_address(tx->from), balance);
+            get_balance(tx->from.value, balance);
             if (tx->gas <= static_cast<uint64_t>(gas1) || balance < uint256_to_bytes32(tx->gas * tx->priority_fee)) [[unlikely]] {
                 // failed tx
                 continue;
@@ -356,8 +338,9 @@ void SimulateManager::run_in_loop() {
             if (FLAGS_simulate_check) [[unlikely]] {
                 _results.emplace_back(res.release_raw());
                 _logs.push_back(host->get_logs());
-                if (_logs.back().size()) [[likely]]
-                    LOG(INFO) << "[log:" << evmc_address_to_str(_logs.back()[0].addr) << "][" << bytes32_to_str(_logs.back()[0].topics[0]);
+                for (auto& l:_logs.back()) {
+                    LOG(INFO) << l.to_string();
+                }
             }
         }
         if (FLAGS_simulate_check) [[unlikely]] {
@@ -460,23 +443,23 @@ void SimulateManager::check_simulate() {
                 LOG(ERROR) << "get gas failed";
             }
             LOG(INFO) << "gas:" << (gas_tmp > gas_comsume ? gas_tmp - gas_comsume : gas_comsume - gas_tmp) << "(" << gas_comsume << ',' << gas_tmp;
-            butil::FlatMap<std::string, std::string> log_map;
-            log_map.init(1);
+            butil::FlatSet<std::string> log_set;
+            log_set.init(1);
             for (auto log : _logs[cur]) {
-                std::string addr_str = "0x" + evmc_address_to_str(log.addr);
-                std::string topic_str = "0x" + bytes32_to_str(log.topics[0]);
-                log_map.insert(addr_str, topic_str);
+                log_set.insert(log.to_string());
             }
             for (auto j : receipt["logs"]) {
-                if (log_map.seek(j["address"].get<std::string>()) == 0 || log_map[j["address"]] != j["topics"][0]) {
-                    LOG(ERROR) << "not find log:" << j.dump();
+                LogEntry l(j);
+                std::string s = l.to_string();
+                if (log_set.seek(s) == NULL) {
+                    LOG(ERROR) << "not find log:" << s;
                 }
                 else {
-                    LOG(INFO) << "match log:" << j["address"] << ":" << j["topics"][0];
+                    LOG(INFO) << "match log:" << s;
                 }
             }
-            if (log_map.size() != receipt["logs"].size()) {
-                LOG(ERROR) << "logs size not match:" << log_map.size() << ',' << receipt["logs"].size();
+            if (log_set.size() != receipt["logs"].size()) {
+                LOG(ERROR) << "logs size not match:" << log_set.size() << ',' << receipt["logs"].size();
             }
         }
             // check gas

@@ -8,23 +8,19 @@ inline uint8_t hex_char_to_byte(char c) {
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     throw std::invalid_argument("Invalid hex character");
 }
-
+// with 0x
 inline std::string evmc_address_to_str(const evmc_address& addr) {
     std::string ret = "0x0000000000000000000000000000000000000000";
 
     const char hex_digits[] = "0123456789abcdef";
 
-    // ret.data() 返回指向字符数组的指针
-    char* out = &ret[2]; // 跳过"0x"
+    char* out = &ret[2];
 
     for (int i = 0; i < 20; i++) {
-        // 获取当前字节
         unsigned char byte = addr.bytes[i];
 
-        // 高四位转为十六进制字符
         *out++ = hex_digits[byte >> 4];
 
-        // 低四位转为十六进制字符
         *out++ = hex_digits[byte & 0x0F];
     }
     return ret;
@@ -94,8 +90,7 @@ inline bytes32 add_bytes32(const evmc_bytes32& a, const evmc_bytes32& b) {
         result.bytes[i] = static_cast<uint8_t>(byte_sum & 0xff);
         carry = byte_sum > 0xff;
     }
-    
-    // 注意: 如果最高位产生进位则会溢出，但在256位整数中这是可接受的
+    // might overflow
     return result;
 }
 
@@ -109,7 +104,7 @@ inline bytes32 sub_bytes32(const evmc_bytes32& a, const evmc_bytes32& b) {
         borrow = a.bytes[i] < b.bytes[i] + borrow;
     }
 
-    // 注意: 如果最高位产生借位则会出现负数，但在256位整数中这是可接受的
+    // might underflow
     return result;
 }
 
