@@ -17,33 +17,22 @@ int main (int argc, char **argv) {
         Websocket ws;
         ws.connect(FLAGS_host, FLAGS_port, FLAGS_path);
         ws.start_listen();
-        //int id = 1;
+        TxPool::instance()->init(&ws);
+        ws.subscribe_headers();
+        ws.subscribe_transactions();
         while (1) {
             sleep(3);
-            //json j;
-            // Request
-            //j["jsonrpc"] = "2.0";
-            //j["method"] = "eth_blockNumber";
-            //j["params"] = json::array();
-            //j["id"] = id;
-            //++id;
-            //ws.write(j);
         }
     }
     else {
         SecureWebsocket ws;
         ws.connect(FLAGS_host, FLAGS_port, FLAGS_path);
         ws.start_listen();
-        int id = 1;
+        TxPool::instance()->init(&ws);
+        ws.subscribe_headers();
+        ws.subscribe_transactions();
         while (1) {
             sleep(3);
-            json j;
-            // Request
-            j["jsonrpc"] = "2.0";
-            j["method"] = "eth_blockNumber";
-            j["params"] = json::array();
-            j["id"] = id++;
-            ws.write(j);
         }
     }
 

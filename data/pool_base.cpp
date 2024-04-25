@@ -43,12 +43,16 @@ PoolBase* PoolBase::load_from_file(std::ifstream& file) {
     PoolType type;
     file.read(reinterpret_cast<char*>(&type), sizeof(type));
     if (type == UniswapV2) {
-        UniswapV2Pool* pool = new UniswapV2Pool(0,0,Address(0), 0, 0);
+        Address zero_addr;
+        UniswapV2Pool* pool = new UniswapV2Pool(0, 0, zero_addr, 0, 0);
+        file.read(reinterpret_cast<char*>(pool), sizeof(PoolBase));
         ::load_from_file(pool->_reserve0, file);
         ::load_from_file(pool->_reserve1, file);
+        return pool;
     }
     else if (type == UniswapV3) {
-        UniswapV3Pool* pool = new UniswapV3Pool(0u, 0u, Address(0), 0ul, 0, 0);
+        Address zero_addr;
+        UniswapV3Pool* pool = new UniswapV3Pool(0u, 0u, zero_addr, 0, 0, 0);
         file.read(reinterpret_cast<char*>(pool), sizeof(PoolBase));
         file.read(reinterpret_cast<char*>(&pool->fee), sizeof(pool->fee));
         file.read(reinterpret_cast<char*>(&pool->tick_space), sizeof(pool->tick_space));
@@ -59,7 +63,7 @@ PoolBase* PoolBase::load_from_file(std::ifstream& file) {
         for (size_t cur = 0; cur < liq_size; ++cur) {
             uint128_t x;
             ::load_from_file(x, file);
-            pool->liquidities[cur] = x;
+            pool->liquidities.push_back(x);
         }
         return pool;
     }
@@ -67,5 +71,4 @@ PoolBase* PoolBase::load_from_file(std::ifstream& file) {
         LOG(ERROR) << "error type of pool";
         return NULL;
     }
-    return NULL;
 }

@@ -98,8 +98,13 @@ int MultiCall::request_result(ClientBase* client, std::vector<std::string>& res,
 }
 
 Address::Address(const Bytes32& b) {
-    memcpy(value.bytes, b.value.bytes + 12, sizeof(value.bytes));
+    memcpy(&value.bytes[0], b.value.bytes + 12, sizeof(value.bytes));
 }
+
+Address::Address(const DBytes& db, uint32_t l, uint32_t r) {
+    memcpy(&value.bytes[0], &db._data[l], sizeof(value.bytes));
+}
+
 // Helper function to convert a single hex character to a byte
 std::string LogEntry::to_string() const {
     std::ostringstream oss;

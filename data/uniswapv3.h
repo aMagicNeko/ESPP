@@ -7,7 +7,7 @@ public:
     static int get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& pools);
     static int get_data(ClientBase* client, uint64_t block_num, std::vector<UniswapV3Pool*>& pools);
     static void add_topics(std::vector<Bytes32>& topics);
-    // 每次新block来时 在处理完logs之后调用
+    // on_head, after calling all on_event
     static int update_data(ClientBase* client, uint64_t block_num = 0);
     int fee;
     int tick_space;

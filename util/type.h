@@ -51,16 +51,21 @@ public:
     }
 };
 class Bytes32;
+class DBytes;
 class Address : public SolidityType {
 public:
     evmc::address value;
     Address() : value(0) {
     }
     Address(const std::string& val) {
+        if (val.size() == 0) {
+            value = evmc::address(0);
+        }
         value = evmc::str_to_address(val);
     }
     Address(const evmc::address& addr) : value(addr) {}
     Address(const Bytes32& b);
+    Address(const DBytes& db, uint32_t l, uint32_t r);
     bool operator==(const Address& addr) const {
         return value == addr.value;
     }
@@ -166,6 +171,14 @@ public:
         }
     return 1;
     }
+
+    DBytes operator+(const DBytes& other) const {
+        DBytes ret(*this);
+        for (uint8_t x:other._data) {
+            ret._data.push_back(x);
+        }
+        return ret;
+    }
     // [l,r)
     uint256_t to_uint256(size_t l, size_t r) const {
         uint256_t result = 0;
@@ -175,14 +188,6 @@ public:
         }
         return result;
     }
-    // [l,r)
-    Address to_address(size_t l, size_t r) const {
-        assert(r-l == 20);
-        evmc_address x;
-        memcpy(x.bytes, _data.data() + l, sizeof(x.bytes));
-        return Address(x);
-    }
-    // 32bytes
     static int decode_32(const std::string& result, std::vector<std::string>& res) {
         std::stringstream encoded;
         encoded << result.substr(0, 64);
@@ -207,7 +212,7 @@ public:
 
     // callData must have been encoded
     Call(const Address& target, const std::string& callData) : target(target), callData(callData) {}
-
+    Call(const Address& target, const DBytes& callData) : target(target), callData(callData) {}
     std::string encode() const {
         std::stringstream encoded;
 

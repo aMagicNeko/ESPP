@@ -31,14 +31,11 @@ struct address : evmc_address
     /// Default and converting constructor.
     ///
     /// Initializes bytes to zeros if not other @p init value provided.
-    address() {
-        memset(bytes, 0, sizeof(bytes));
-    }
     /// Converting constructor from unsigned integer value.
     ///
     /// This constructor assigns the @p v value to the last 8 bytes [12:19]
     /// in big-endian order.
-    constexpr explicit address(uint64_t v) noexcept
+    constexpr explicit address(uint64_t v = 0) noexcept
       : evmc_address{{0,
                       0,
                       0,
@@ -60,23 +57,13 @@ struct address : evmc_address
                       static_cast<uint8_t>(v >> 8),
                       static_cast<uint8_t>(v >> 0)}}
     {}
-
+    address(const evmc_address& other) : evmc_address(other) {
+    }
     /// Explicit operator converting to bool.
     inline explicit operator bool() const noexcept;
 
     /// Implicit operator converting to bytes_view.
     inline constexpr operator bytes_view() const noexcept { return {bytes, sizeof(bytes)}; }
-
-    address& operator=(const evmc_address& other) {
-        if (this != &other) {
-            memcpy(this->bytes, other.bytes, sizeof(bytes));
-        }
-        return *this;
-    }
-
-    address(const evmc_address& other) {
-        memcpy(this->bytes, other.bytes, sizeof(bytes));
-    }
 };
 
 /// The fixed size array of 32 bytes for storing 256-bit EVM values.
@@ -87,15 +74,12 @@ struct bytes32 : evmc_bytes32
     /// Default and converting constructor.
     ///
     /// Initializes bytes to zeros if not other @p init value provided.
-    bytes32() noexcept {
-        memset(bytes, 0, sizeof(bytes));
-    }
 
     /// Converting constructor from unsigned integer value.
     ///
     /// This constructor assigns the @p v value to the last 8 bytes [24:31]
     /// in big-endian order.
-    constexpr explicit bytes32(uint64_t v) noexcept
+    constexpr explicit bytes32(uint64_t v = 0) noexcept
       : evmc_bytes32{{0,
                       0,
                       0,
@@ -136,15 +120,7 @@ struct bytes32 : evmc_bytes32
     /// Implicit operator converting to bytes_view.
     inline constexpr operator bytes_view() const noexcept { return {bytes, sizeof(bytes)}; }
 
-    bytes32& operator=(const evmc_bytes32& other) {
-        if (this != &other) {
-            memcpy(this->bytes, other.bytes, sizeof(bytes));
-        }
-        return *this;
-    }
-
-    bytes32(const evmc_bytes32& other) {
-        memcpy(this->bytes, other.bytes, sizeof(bytes));
+    bytes32(const evmc_bytes32& other) : evmc_bytes32(other) {
     }
 };
 

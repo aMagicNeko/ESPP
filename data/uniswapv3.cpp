@@ -52,6 +52,7 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
                 LOG(INFO) << "not matched factory address::" << log.address.to_string();
                 continue;
             }
+            LOG(INFO) << "matched log:" <<  log.to_string();
             if (log.data.size() != 64) [[unlikely]] {
                 LOG(INFO) << "wrong log data:" << log.data.to_string();
                 continue;
@@ -72,27 +73,30 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
             Address token1(log.topics[1]);
             Address token2(log.topics[2]);
             uint64_t fee = log.topics[3].to_uint256().convert_to<uint64_t>();
-            uint64_t tick_space = log.data.to_uint256(0, 32).convert_to<uint64_t>();;
-            Address pool = log.data.to_address(32, 64);
-            auto p = PoolManager::instance()->add_uniswapv3_pool(pool, token1, token2, fee, tick_space);
+            uint64_t tick_space = log.data.to_uint256(0, 32).convert_to<uint64_t>();
+            // bug of compiler, we have to allocate it on the heap
+            Address pool(log.data, 44, 64);
+            UniswapV3Pool* p = PoolManager::instance()->add_uniswapv3_pool(pool, token1, token2, fee, tick_space);
             if (p) {
                 pools.push_back(p);
+                LOG(INFO) << "UniswapV3 pool:" << p->address.to_string() << " token1:" << p->token1 << " token2" 
+                        << p->token2 << " fee:" << p->fee << " tick_space:" << p->tick_space;
             }
-            // save to file
-            LOG(INFO) << "UniswapV3 pool:" << pool.to_string();
         }
     }
+    LOG(INFO) << "UniswapV3 pool size" << pools.size();
     return 0;
 }
 
-static const std::string slot0_selector = "0x" + HashAndTakeAllBytes("slot0()");
-static const std::string ticks_selector = "0x" + HashAndTakeAllBytes("ticks(int24)");
+static const DBytes slot0_selector(HashAndTakeFirstFourBytes("slot0()"));
+static const DBytes ticks_selector(HashAndTakeFirstFourBytes("ticks(int24)"));
 
 int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<UniswapV3Pool*>& pools) {
     MultiCall multi_call(1);
     uint32_t j = 0; // cur pool data index
     // get cur tick and price
     for (uint32_t i = 0; i < pools.size(); ++i) {
+        LOG(INFO) << i << ":" << pools[i]->address.to_string();
         multi_call.add_call(Call(pools[i]->address, slot0_selector));
         if ((i + 1) % FLAGS_batch_size == 0 || i == pools.size() - 1) {
             int failed_cnt = 0;
@@ -115,6 +119,7 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
                     LOG(ERROR) << "decode dbytes failed";
                     return -1;
                 }
+                LockGuard lock(&pools[j]->_mutex);
                 pools[j]->sqrt_price = Uint<256>::decode(rs[0]);
                 pools[j]->tick = static_cast<uint32_t>(Uint<256>::decode(rs[1]));
                 LOG(INFO) << "sqrt_price:" << pools[j]->sqrt_price << " tick:" << pools[j]->tick;
@@ -127,8 +132,8 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
     j = 0;
     uint32_t batch_size = FLAGS_batch_size / (2 * FLAGS_uniswapv3_half_tick_count + 1);
     for (uint32_t i = 0; i < pools.size(); ++i) {
-        for (uint k = -FLAGS_uniswapv3_half_tick_count; k <= FLAGS_uniswapv3_half_tick_count; ++k) {
-            multi_call.add_call(Call(pools[i]->address, ticks_selector + Uint<256>(pools[i]->tick + k * pools[i]->tick_space).encode()));
+        for (int k = -FLAGS_uniswapv3_half_tick_count; k <= FLAGS_uniswapv3_half_tick_count; ++k) {
+            multi_call.add_call(Call(pools[i]->address, ticks_selector + DBytes(Uint<256>(pools[i]->tick + k * pools[i]->tick_space).encode())));
         }
         if ((i + 1) % batch_size == 0 || i == pools.size() - 1) {
             int failed_cnt = 0;

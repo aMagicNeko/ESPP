@@ -249,7 +249,7 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
             ret = PARSE_TRANSACTION_TYPE_UNKNOWN_ERROR;
             break;
         }
-        auto tx = std::make_shared<Transaction>(Transaction{int64_t(nonce), priority_fee, value, from, to, gas, input, 0ul, hash, time_stamp});
+        auto tx = std::make_shared<Transaction>(Transaction{int64_t(nonce), priority_fee, value, from, to, gas, input.substr(2), 0ul, hash, time_stamp});
         if (j.find("accessList") != j.end()) {
             for (auto jj : j["accessList"]) {
                 AccessListEntry entry;

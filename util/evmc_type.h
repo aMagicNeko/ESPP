@@ -28,6 +28,9 @@ inline std::string evmc_address_to_str(const evmc_address& addr) {
 
 // Convert a hex string to an evmc::address
 inline address str_to_address(const std::string& str) {
+    if (str.size() == 0) {
+        return address(0);
+    }
     if (str.size() != 40 && str.size() != 42) {
         throw std::invalid_argument("Invalid address length");
     }
@@ -82,7 +85,7 @@ inline std::string bytes32_to_str(const evmc_bytes32& bytes) {
 }
 
 inline bytes32 add_bytes32(const evmc_bytes32& a, const evmc_bytes32& b) {
-    bytes32 result = {};
+    bytes32 result;
     bool carry = false;
     
     for (int i = 31; i >= 0; --i) {
@@ -95,7 +98,7 @@ inline bytes32 add_bytes32(const evmc_bytes32& a, const evmc_bytes32& b) {
 }
 
 inline bytes32 sub_bytes32(const evmc_bytes32& a, const evmc_bytes32& b) {
-    bytes32 result = {};
+    bytes32 result;
     bool borrow = false;
 
     for (int i = 31; i >= 0; --i) {
@@ -134,14 +137,6 @@ inline std::string evmc_message_to_string(const evmc_message& msg) {
     // not initialized in evmone
     //ss << "  Code: " << (msg.code ? to_hex_string(msg.code, msg.code_size) : "NULL") << std::endl;
     return ss.str();
-}
-
-inline void evmc_address_copy(evmc_address* dest, const evmc_address* src) {
-    memcpy(dest->bytes, src->bytes, sizeof(src->bytes));
-}
-
-inline void evmc_bytes32_copy(evmc_bytes32* dest, const evmc_bytes32* src) {
-    memcpy(dest->bytes, src->bytes, sizeof(src->bytes));
 }
 
 inline std::string evmc_result_to_string(const Result& result) {

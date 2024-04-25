@@ -244,38 +244,40 @@ inline int request_head_by_number(ClientBase* client, uint64_t block_number, int
 }
 
 inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_t end_block, const std::vector<Bytes32>& topics, std::vector<LogEntry>& logs) {
-    json json_data = {
-        {"jsonrpc", "2.0"},
-        {"method", "eth_getLogs"},
-        {"params", 
-            {
-                {{"fromBlock", "0x" + uint64_to_str(start_block)}, {"toBlock", "0x" + uint64_to_str(end_block)}}
+    for (uint32_t i = 0; i < topics.size(); i += 4) {
+        json json_data = {
+            {"jsonrpc", "2.0"},
+            {"method", "eth_getLogs"},
+            {"params", 
+                {
+                    {{"fromBlock", "0x" + uint64_to_str(start_block)}, {"toBlock", "0x" + uint64_to_str(end_block)}}
+                },
             },
-        },
-        {"id", 1}
-    };
-    for (const Bytes32& topic:topics) {
-        json_data["params"][0]["topics"].push_back(topic.to_string());
-    }
-    //LOG(INFO) << "start to get logs:" << json_data.dump();
-    if (client->write_and_wait(json_data) !=0) [[unlikely]] {
-        LOG(ERROR) << "get_filter_logs failed";
-        return -1;
-    }
-    if (json_data.find("result") == json_data.end()) [[unlikely]] {
-        LOG(ERROR) << "get logs failed" << json_data.dump();
-        return -1;
-    }
-    for (auto &it : json_data["result"]) {
-        if (it.find("removed") == it.end()) [[unlikely]] {
-            LOG(ERROR) << "get logs failed: " << json_data.dump();
+            {"id", 1}
+        };
+        // every request include up to 4 topics
+        for (uint32_t j = i; j < i + 4 && j < topics.size(); ++j) {
+            json_data["params"][0]["topics"].push_back(topics[j].to_string());
+        }
+        //LOG(INFO) << "start to get logs:" << json_data.dump();
+        if (client->write_and_wait(json_data) !=0) [[unlikely]] {
+            LOG(ERROR) << "get_filter_logs failed";
             return -1;
         }
-        if (it["removed"]) [[unlikely]] {
-            continue;
+        if (json_data.find("result") == json_data.end()) [[unlikely]] {
+            LOG(ERROR) << "get logs failed" << json_data.dump();
+            return -1;
         }
-        logs.push_back(LogEntry(it));
-        //LOG(INFO) << "matched log:" <<  logs.back().to_string();
+        for (auto &it : json_data["result"]) {
+            if (it.find("removed") == it.end()) [[unlikely]] {
+                LOG(ERROR) << "get logs failed: " << json_data.dump();
+                return -1;
+            }
+            if (it["removed"]) [[unlikely]] {
+                continue;
+            }
+            logs.push_back(LogEntry(it));
+        }
     }
     return 0;
 }

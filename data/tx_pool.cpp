@@ -4,7 +4,7 @@
 #include "data/request.h"
 #include "simulate/simulate_manager.h"
 #include "search/pool_manager.h"
-// 防止因一次请求失败陷入block reorg或者程序崩溃
+// avoid a failure causing program abort
 DEFINE_int32(long_request_failed_limit, 50, "max try num in a big operation");
 DECLARE_int32(batch_size);
 DECLARE_bool(simulate_check);
@@ -213,7 +213,6 @@ void TxPool::update_txs(Account* account, int64_t nonce) {
         it->second->account_priority_fee = prev_fee;
         _txs.insert(it->second);
     }
-    // 接下来的交易
     account->continuous_nonce = cur;
 }
 
@@ -221,7 +220,7 @@ int TxPool::set_nonce(const Address& from, uint64_t nonce) {
     LockGuard lock(&_mutex);
     auto p = _accounts.seek(from);
     if (p == NULL) {
-        // 一些nonce请求在reset之前发送, 在reset之后response才收到
+        // some nonce requests sent before reset
         //LOG(ERROR) << "Account not found: " << from;
         return 0;
     }
@@ -239,6 +238,7 @@ int TxPool::init(ClientBase* client) {
     _accounts.init(1500);
     _client = client;
     s_update_pools_wrap_status.store(0);
+    s_get_pending_txs_wrap_status.store(0);
     return 0;
 }
 

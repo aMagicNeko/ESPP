@@ -125,6 +125,7 @@ int UniswapV2Pool::get_data(ClientBase* client, uint64_t block_num, const std::v
                     return -1;
                 }
                 Address token_address1 = Address::decode(rs[0]);
+                LOG(INFO) << "token0: " << token_address0.to_string() << " token1: " << token_address1.to_string();
                 PoolManager::instance()->add_uniswapv2_pool(token_address0, token_address1, pools[j], _reserve0[j], _reserve1[j]);
             }
         }
