@@ -161,7 +161,7 @@ int UniswapV2Pool::on_event(const LogEntry& log) {
 void UniswapV2Pool::save_to_file(std::ofstream& file) {
     PoolType type = UniswapV2;
     file.write(reinterpret_cast<char*>(&type), sizeof(type));
-    file.write(reinterpret_cast<char*>(this), sizeof(PoolBase));
+    file.write(const_cast<char*>(reinterpret_cast<const char*>(&token1)), sizeof(token1) + sizeof(token2) + sizeof(address));
     ::save_to_file(_reserve0, file);
     ::save_to_file(_reserve1, file);
 }

@@ -44,7 +44,7 @@ PoolBase* PoolBase::load_from_file(std::ifstream& file) {
     if (type == UniswapV2) {
         Address zero_addr;
         UniswapV2Pool* pool = new UniswapV2Pool(0, 0, zero_addr, 0, 0);
-        file.read(reinterpret_cast<char*>(pool), sizeof(PoolBase));
+        file.read(const_cast<char*>(reinterpret_cast<const char*>(&pool->token1)), sizeof(token1) + sizeof(token2) + sizeof(address));
         ::load_from_file(pool->_reserve0, file);
         ::load_from_file(pool->_reserve1, file);
         return pool;
@@ -52,7 +52,7 @@ PoolBase* PoolBase::load_from_file(std::ifstream& file) {
     else if (type == UniswapV3) {
         Address zero_addr;
         UniswapV3Pool* pool = new UniswapV3Pool(0u, 0u, zero_addr, 0, 0, 0);
-        file.read(reinterpret_cast<char*>(pool), sizeof(PoolBase));
+        file.read(const_cast<char*>(reinterpret_cast<const char*>(&pool->token1)), sizeof(token1) + sizeof(token2) + sizeof(address));
         file.read(reinterpret_cast<char*>(&pool->fee), sizeof(pool->fee));
         file.read(reinterpret_cast<char*>(&pool->tick_space), sizeof(pool->tick_space));
         ::load_from_file(pool->sqrt_price, file);

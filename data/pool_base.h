@@ -20,6 +20,5 @@ public:
 protected:
     bthread_mutex_t _mutex;
 };
-
 // get the create block of the contract
 int get_start_block(ClientBase* client, const Address& addr, uint64_t& res);
