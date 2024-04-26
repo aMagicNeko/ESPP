@@ -126,7 +126,7 @@ int UniswapV2Pool::get_data(ClientBase* client, uint64_t block_num, const std::v
                 }
                 Address token_address1 = Address::decode(rs[0]);
                 LOG(INFO) << "token0: " << token_address0.to_string() << " token1: " << token_address1.to_string();
-                PoolManager::instance()->add_uniswapv2_pool(token_address0, token_address1, pools[j], _reserve0[j], _reserve1[j]);
+                PoolManager::instance()->add_uniswapv2_pool(pools[j], token_address0, token_address1, _reserve0[j], _reserve1[j]);
             }
         }
     }
@@ -139,9 +139,9 @@ void UniswapV2Pool::add_topics(std::vector<Bytes32>& topics) {
     topics.push_back(s_log_topic);
 }
 
-UniswapV2Pool::UniswapV2Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint256_t reserve0_arg, uint256_t reserve1_arg) : PoolBase(token1_arg, token1_arg, address_arg) {
-    _reserve0 = reserve0_arg;
-    _reserve1 = reserve1_arg;
+UniswapV2Pool::UniswapV2Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint256_t reserve0_arg, uint256_t reserve1_arg) : PoolBase(token1_arg, token2_arg, address_arg) {
+    _reserve0 = reserve0_arg.convert_to<uint128_t>();
+    _reserve1 = reserve1_arg.convert_to<uint128_t>();
 }
 
 int UniswapV2Pool::on_event(const LogEntry& log) {
@@ -150,10 +150,11 @@ int UniswapV2Pool::on_event(const LogEntry& log) {
         LOG(ERROR) << "invalid swap data: " << log.data.to_string();
         return -1;
     }
+    LOG(INFO) << "matched uniswapV2 log, pool:" << log.address.to_string();
     uint256_t amount0 = log.data.to_uint256(0, 32);
     uint256_t amount1 = log.data.to_uint256(32, 64);
-    _reserve0 = amount0;
-    _reserve1 = amount1;
+    _reserve0 = amount0.convert_to<uint128_t>();
+    _reserve1 = amount1.convert_to<uint128_t>();
     return 0;
 }
 
@@ -163,4 +164,9 @@ void UniswapV2Pool::save_to_file(std::ofstream& file) {
     file.write(reinterpret_cast<char*>(this), sizeof(PoolBase));
     ::save_to_file(_reserve0, file);
     ::save_to_file(_reserve1, file);
+}
+
+void UniswapV2Pool::get_input_intervals(std::vector<std::pair<uint128_t, uint128_t>>& i) {
+    uint128_t l = 1;
+    i.emplace_back(0, (l << 112) - 1 - _reserve0);
 }

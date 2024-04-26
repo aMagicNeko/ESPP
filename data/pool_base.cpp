@@ -3,7 +3,6 @@
 #include "data/tx_pool.h"
 #include "data/uniswapv2.h"
 #include "data/uniswapv3.h"
-DEFINE_int32(logs_step, 100, "requst_logs max block step");
 DECLARE_int32(long_request_failed_limit);
 
 int get_start_block(ClientBase* client, const Address& addr, uint64_t& res) {

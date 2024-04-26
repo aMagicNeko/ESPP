@@ -2,6 +2,7 @@
 #include "util/json_parser.h"
 #include "data/tx_pool.h"
 #include "simulate/simulate_manager.h"
+#include "search/pool_manager.h"
 DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(wait_timeout_ms, 5000, "max wait time in milliseconds");
 // avoid high-parallel error on write
@@ -76,7 +77,8 @@ int ClientBase::handle_headers(const json& j) {
         ret = PARSE_HEAD_NUMBER_ERROR;
     }
     ErrorHandle::instance()->reset();
-    TxPool::instance()->on_head(parent_hash);
+    TxPool::instance()->on_head();
+    PoolManager::instance()->on_head(parent_hash);
     uint64_t timestamp = 0;
     if (parse_json(j, "timestamp", timestamp) != 0) {
         LOG(ERROR) << "parse timestamp failed: " << j.dump();

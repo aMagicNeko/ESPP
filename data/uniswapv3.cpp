@@ -11,7 +11,7 @@ DECLARE_int32(batch_size);
 DECLARE_int32(bthread_limit);
 DECLARE_int32(long_request_failed_limit);
 DEFINE_int32(uniswapv3_half_tick_count, 6, "half of tick count to keep updating");
-DECLARE_int32(logs_step);
+DEFINE_int32(uniswapv3_logs_step, 10000, "logs step to get pools of uniswapV3");
 
 static const Address factory_address("0x1F98431c8aD98523631AE4a59f267346ea31F984");
 static std::vector<UniswapV3Pool*> s_on_event_pools;
@@ -34,7 +34,7 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
     topics.push_back(HashAndTakeAllBytes("PoolCreated(address,address,uint24,int24,address)"));
     std::vector<LogEntry> logs;
     for (uint64_t cur = start_block; ; ) {
-        uint64_t next = cur + FLAGS_logs_step;
+        uint64_t next = cur + FLAGS_uniswapv3_logs_step;
         LOG(INFO) << "cur:" << cur << " next:" << next;
         if (next > end_block) {
             break;
@@ -186,12 +186,13 @@ UniswapV3Pool::UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, const Add
     liquidities.resize(tick_size);
 }
 
-// 直接获取tick信息
 int UniswapV3Pool::on_event(const LogEntry& log) {
+    // memory fence is in the wrapper function
     auto p = s_pool_address_set.seek(log.address);
     if (p) {
         return 0;
     }
+    LOG(INFO) << "matched uniswapV3 log, pool:" << log.address.to_string();
     s_on_event_pools.push_back(this);
     s_pool_address_set.insert(log.address);
     return 0;
@@ -220,4 +221,8 @@ void UniswapV3Pool::save_to_file(std::ofstream& file) {
     for (uint128_t x : liquidities) {
         ::save_to_file(x, file);
     }
+}
+
+void UniswapV3Pool::get_input_intervals(std::vector<std::pair<uint128_t, uint128_t>>& i) {
+    
 }

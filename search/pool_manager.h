@@ -13,7 +13,11 @@ public:
     int update_pools();
     void save_to_file();
     void load_from_file();
+    int check_parent(const std::string& parent_hash) const;
+    void on_head(const std::string& parent_hash);
+    uint32_t tokens_num() { return _tokens_index.size(); }
 private:
+    friend class OfflineSearch;
     butil::FlatMap<Address, uint32_t, std::hash<Address>> _tokens_index;
     std::vector<Address> _tokens_address;
     std::vector<butil::FlatMap<uint32_t, std::vector<uint32_t>>> _pools_map;

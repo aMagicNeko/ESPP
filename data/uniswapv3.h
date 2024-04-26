@@ -11,11 +11,12 @@ public:
     static int update_data(ClientBase* client, uint64_t block_num = 0);
     int fee;
     int tick_space;
-    UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint64_t fee_arg, uint64_t tick_space_arg, int tick_size);
-    int on_event(const LogEntry& log) override;
-    void save_to_file(std::ofstream& file) override;
     uint256_t sqrt_price;
     uint32_t tick;
     std::vector<uint128_t> liquidities;
+    UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint64_t fee_arg, uint64_t tick_space_arg, int tick_size);
+    int on_event(const LogEntry& log) override;
+    void save_to_file(std::ofstream& file) override;
+    void get_input_intervals(std::vector<std::pair<uint128_t, uint128_t>>& i) override;
 private:
 };

@@ -71,8 +71,7 @@ public:
     int get_pending_txs();
     void add_tx(std::shared_ptr<Transaction> tx);
     int set_nonce(const Address& from, uint64_t nonce);
-    int on_head(const std::string& parent_hash);
-    int check_parent(const std::string& parent_hash) const;
+    int on_head();
     // get pending tx by its order in the pool, x is used to notice if no new tx is here
     int get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<uint32_t>* x = NULL);
     void notice_simulate_result(size_t index, const std::vector<LogEntry>& logs);
@@ -87,5 +86,4 @@ private:
     ClientBase* _client;
     bthread_mutex_t _mutex; // for _accounts, _txs
     bvar::LatencyRecorder _unorder_ratio;
-    uint64_t _track_block; // pools data is updated to this number
 };

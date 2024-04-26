@@ -4,8 +4,17 @@
 #include <filesystem>
 DECLARE_int32(uniswapv3_half_tick_count);
 DECLARE_int32(long_request_failed_limit);
+DEFINE_int32(logs_step, 10, "requst_logs max block step");
+
+// ensure only one thread is processing and for memory fence
+static std::atomic<int> s_update_pools_wrap_status;
+
 void PoolManager::save_to_file() {
     std::ofstream file("pools.dat", std::ios::binary);
+    if (!file) {
+        LOG(ERROR) << "Failed to open file for writing.";
+        return;
+    }
     file.write(reinterpret_cast<char*>(&_trace_block), sizeof(_trace_block));
     size_t size_tmp = _tokens_address.size();
     file.write(reinterpret_cast<char*>(&size_tmp), sizeof(size_tmp));
@@ -16,11 +25,17 @@ void PoolManager::save_to_file() {
     file.write(reinterpret_cast<char*>(&size_tmp), sizeof(size_tmp));
     for (PoolBase* pool:_pools) {
         pool->save_to_file(file);
-    }    
+    }
+    file.close();
+    LOG(INFO) << "save pools success";
 }
 
 void PoolManager::load_from_file() {
     std::ifstream file("pools.dat", std::ios::binary);
+    if (!file) {
+        LOG(ERROR) << "Failed to open file for reading.";
+        return;
+    }
     file.read(reinterpret_cast<char*>(&_trace_block), sizeof(_trace_block));
     size_t token_size = 0;
     file.read(reinterpret_cast<char*>(&token_size), sizeof(token_size));
@@ -32,7 +47,11 @@ void PoolManager::load_from_file() {
     size_t pool_size = 0;
     file.read(reinterpret_cast<char*>(&pool_size), sizeof(pool_size));
     for (size_t cur = 0; cur < pool_size; ++cur) {
-        _pools.push_back(PoolBase::load_from_file(file));
+        auto pool = PoolBase::load_from_file(file);
+        if (pool) {
+            _pools.push_back(pool);
+        }
+        LOG(INFO) << cur << "th pool:" << pool->address.to_string() << " token1:" << pool->token1 << " token2:" << pool->token2;
     }
     // _tokens_index
     for (uint32_t i = 0; i < _tokens_address.size(); ++i) {
@@ -43,10 +62,18 @@ void PoolManager::load_from_file() {
         _pools_address_map.insert(_pools[i]->address, i);
     }
     // _pools_map
-    for (uint32_t i = 0; i < _tokens_address.size(); ++i) {
+    for (uint32_t i = 0; i < _tokens_address.size() + 1; ++i) {
         _pools_map.push_back(butil::FlatMap<uint32_t, std::vector<uint32_t>>());
         _pools_reverse_map.push_back(butil::FlatMap<uint32_t, std::vector<uint32_t>>());
     }
+    for (auto&m : _pools_map) {
+        m.init(1);
+    }
+    for (auto&m : _pools_reverse_map) {
+        m.init(1);
+    }
+    LOG(INFO) << "token size:" << _tokens_address.size();
+
     for (uint32_t i = 0; i < _pools.size(); ++i) {
         PoolBase* pool = _pools[i];
         if (_pools_map[pool->token1].seek(pool->token2) == 0) {
@@ -58,6 +85,7 @@ void PoolManager::load_from_file() {
         }
         _pools_reverse_map[pool->token2][pool->token1].push_back(i);
     }
+    LOG(INFO) << "load pools from file success";
 }
 
 int PoolManager::init(ClientBase* client) {
@@ -103,6 +131,8 @@ int PoolManager::init(ClientBase* client) {
         return -1;
     }
     save_to_file();
+    // for memory fence
+    s_update_pools_wrap_status.store(0, std::memory_order_release);
     return 0;
 }
 
@@ -110,10 +140,10 @@ void PoolManager::add_token(const Address& token_addr) {
     if (_tokens_index.seek(token_addr) == NULL) {
         _tokens_address.push_back(token_addr);
         _tokens_index.insert(token_addr, _tokens_address.size() - 1);
-        _pools_map.push_back(butil::FlatMap<uint32_t, std::vector<uint32_t>>());
-        _pools_map.back().init(1);
-        _pools_reverse_map.push_back(butil::FlatMap<uint32_t, std::vector<uint32_t>>());
-        _pools_reverse_map.back().init(1);
+        _pools_map.resize(_tokens_index.size());
+        _pools_reverse_map.resize(_tokens_index.size());
+        //_pools_map[_tokens_index.size() - 1].init(1);
+        //_pools_reverse_map[_tokens_index.size() - 1].init(1);
     }
 }
 
@@ -122,19 +152,20 @@ void PoolManager::add_uniswapv2_pool(const Address& pool_addr, const Address& to
         return;
     }
     add_token(token0);
-    add_token(token0);
+    add_token(token1);
     uint32_t index0 = _tokens_index[token0];
-    uint32_t index1 = _tokens_index[token0];
+    uint32_t index1 = _tokens_index[token1];
     _pools.push_back(new UniswapV2Pool(index0, index1, pool_addr, reserve0 ,reserve1));
+    _pools_map[index0].init(1);
     if (_pools_map[index0].seek(index1) == 0) {
         _pools_map[index0].insert(index1, std::vector<uint32_t>());
     }
     _pools_map[index0][index1].push_back(_pools.size() - 1);
-    if (_pools_map[index1].seek(index0) == 0) {
-        _pools_map[index1].insert(index0, std::vector<uint32_t>());
+    _pools_reverse_map[index1].init(1);
+    if (_pools_reverse_map[index1].seek(index0) == 0) {
+        _pools_reverse_map[index1].insert(index0, std::vector<uint32_t>());
     }
     _pools_reverse_map[index1][index0].push_back(_pools.size()-1);
-    assert(_pools_address_map.seek(pool_addr) == 0);
     _pools_address_map.insert(pool_addr, _pools.size()-1);
 }
 
@@ -143,15 +174,23 @@ UniswapV3Pool* PoolManager::add_uniswapv3_pool(const Address& pool_addr, const A
         return 0;
     }
     add_token(token0);
-    add_token(token0);
+    add_token(token1);
     uint32_t index0 = _tokens_index[token0];
-    uint32_t index1 = _tokens_index[token0];
-    _pools.push_back(new UniswapV3Pool(index0, index1, pool_addr, fee, tickspace, 2 * FLAGS_uniswapv3_half_tick_count + 1));
+    uint32_t index1 = _tokens_index[token1];
+    auto p = new UniswapV3Pool(index0, index1, pool_addr, fee, tickspace, 2 * FLAGS_uniswapv3_half_tick_count + 1);
+    _pools.push_back(p);
+    _pools_map[index0].init(1);
+    if (_pools_map[index0].seek(index1) == 0) {
+        _pools_map[index0].insert(index1, std::vector<uint32_t>());
+    }
     _pools_map[index0][index1].push_back(_pools.size() - 1);
+    _pools_reverse_map[index1].init(1);
+    if (_pools_reverse_map[index1].seek(index0) == 0) {
+        _pools_reverse_map[index1].insert(index0, std::vector<uint32_t>());
+    }
     _pools_reverse_map[index1][index0].push_back(_pools.size()-1);
-    assert(_pools_address_map.seek(pool_addr) == 0);
     _pools_address_map.insert(pool_addr, _pools.size()-1);
-    return static_cast<UniswapV3Pool*>(_pools.back());
+    return p;
 }
 
 int PoolManager::update_pools() {
@@ -166,8 +205,12 @@ int PoolManager::update_pools() {
         if (_trace_block == cur_block) {
             return 0;
         }
+        uint32_t next = _trace_block + FLAGS_logs_step;
+        if (next > cur_block) { 
+            next = cur_block;
+        }
         std::vector<LogEntry> logs;
-        if (request_filter_logs(_client, _trace_block + 1, _trace_block + 1, _update_topics, logs) != 0) [[unlikely]] {
+        if (request_filter_logs(_client, _trace_block + 1, next, _update_topics, logs) != 0) [[unlikely]] {
             LOG(ERROR) << "request_filter_logs failed";
             ++failed_cnt;
             continue;
@@ -182,7 +225,7 @@ int PoolManager::update_pools() {
                 }
             }
         }
-        ++_trace_block;
+        _trace_block = next;
         if (UniswapV3Pool::update_data(_client, _trace_block) != 0) {
             LOG(ERROR) << "update UniswapV3Pool data failed";
             _trace_block = 0;
@@ -190,4 +233,53 @@ int PoolManager::update_pools() {
         }
     }
     return -1;
+}
+
+int PoolManager::check_parent(const std::string& parent_hash) const {
+    int failed_cnt = 0;
+    std::string hash;
+    while (failed_cnt <= FLAGS_long_request_failed_limit) {
+        if (request_header_hash(_client, _trace_block, hash) == 0) {
+            break;
+        }
+        ++failed_cnt;
+    }
+    if (parent_hash != hash) {
+        LOG(ERROR) << "block hash not match";
+        return -1;
+    }
+    return 0;
+}
+
+void* update_pools_wrap(void* arg) {
+    auto p = (std::string*)arg;
+    // also for memory fence
+    if (s_update_pools_wrap_status.fetch_add(1, std::memory_order_acquire) != 0) {
+        LOG(INFO) << "another update_pools_wrap is processing";
+        s_update_pools_wrap_status.fetch_sub(1, std::memory_order_relaxed);
+        delete p;
+        return NULL;
+    }
+    if (PoolManager::instance()->check_parent(*p) != 0) {
+        LOG(WARNING) << "block reorg!";
+    }
+    if (PoolManager::instance()->update_pools() != 0) {
+        LOG(INFO) << "update pools failed";
+        abort();
+        delete p;
+        // for memory fence
+        s_update_pools_wrap_status.fetch_sub(1, std::memory_order_release);
+        return NULL;
+    }
+    ErrorHandle::instance()->pools_updated();
+    delete p;
+    // for memory fence
+    s_update_pools_wrap_status.fetch_sub(1, std::memory_order_release);
+    return NULL;
+}
+
+void PoolManager::on_head(const std::string& parent_hash) {
+    bthread_t bid = 0;
+    auto p = new std::string(parent_hash);
+    bthread_start_background(&bid, nullptr, update_pools_wrap, p);
 }

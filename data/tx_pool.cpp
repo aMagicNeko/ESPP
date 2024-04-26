@@ -36,41 +36,6 @@ void* get_pending_txs_wrap(void* arg) {
     return NULL;
 }
 
-// ensure only one thread is processing
-static std::atomic<int> s_update_pools_wrap_status;
-
-void* update_pools_wrap(void* arg) {
-    auto p = (std::string*)arg;
-    if (s_update_pools_wrap_status.fetch_add(1, std::memory_order_relaxed) != 0) {
-        LOG(INFO) << "another update_pools_wrap is processing";
-        s_update_pools_wrap_status.fetch_sub(1, std::memory_order_relaxed);
-        delete p;
-        return NULL;
-    }
-    if (TxPool::instance()->check_parent(*p) != 0) {
-        LOG(INFO) << "block reorg!";
-        // block reorg
-        //if (PoolManager::instance()->update_pools() != 0 ) {
-        //    LOG(INFO) << "get pools data failed";
-        //    delete p;
-        //    s_update_pools_wrap_status.fetch_sub(1, std::memory_order_relaxed);
-        //    return NULL;
-        //}
-        //abort();
-    }
-    if (PoolManager::instance()->update_pools() != 0) {
-        LOG(INFO) << "update pools failed";
-        abort();
-        delete p;
-        s_update_pools_wrap_status.fetch_sub(1, std::memory_order_relaxed);
-        return NULL;
-    }
-    ErrorHandle::instance()->pools_updated();
-    delete p;
-    s_update_pools_wrap_status.fetch_sub(1, std::memory_order_relaxed);
-    return NULL;
-}
-
 void TxPool::check_order(__gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
             __gnu_pbds::rb_tree_tag, __gnu_pbds::tree_order_statistics_node_update>* txs) {
     std::vector<std::string> hashs;
@@ -126,7 +91,7 @@ int TxPool::get_pending_txs() {
     return 0;
 }
 
-int TxPool::on_head(const std::string& parent_hash) {
+int TxPool::on_head() {
     auto tmp = new __gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
             __gnu_pbds::rb_tree_tag, __gnu_pbds::tree_order_statistics_node_update>;
     {
@@ -136,8 +101,6 @@ int TxPool::on_head(const std::string& parent_hash) {
         _txs.clear();
     }
     bthread_t bid;
-    auto p = new std::string (parent_hash);
-    bthread_start_background(&bid, nullptr, update_pools_wrap, p);
     bthread_start_background(&bid, nullptr, get_pending_txs_wrap, NULL);
     bthread_start_background(&bid, nullptr, check_order_wrap, tmp);
     return 0;
@@ -237,24 +200,7 @@ bool TxPool::has_account(const Address& from) const {
 int TxPool::init(ClientBase* client) {
     _accounts.init(1500);
     _client = client;
-    s_update_pools_wrap_status.store(0);
     s_get_pending_txs_wrap_status.store(0);
-    return 0;
-}
-
-int TxPool::check_parent(const std::string& parent_hash) const {
-    int failed_cnt = 0;
-    std::string hash;
-    while (failed_cnt <= FLAGS_long_request_failed_limit) {
-        if (request_header_hash(_client, _track_block, hash) == 0) {
-            break;
-        }
-        ++failed_cnt;
-    }
-    if (parent_hash != hash) {
-        LOG(ERROR) << "block hash not match";
-        return -1;
-    }
     return 0;
 }
 
