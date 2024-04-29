@@ -245,7 +245,7 @@ inline int request_head_by_number(ClientBase* client, uint64_t block_number, int
 }
 
 inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_t end_block, const std::vector<Bytes32>& topics, std::vector<LogEntry>& logs) {
-    for (uint32_t i = 0; i < topics.size(); i += 4) {
+    for (uint32_t i = 0; i < topics.size(); ++i) {
         json json_data = {
             {"jsonrpc", "2.0"},
             {"method", "eth_getLogs"},
@@ -256,15 +256,14 @@ inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_
             },
             {"id", 1}
         };
-        // every request include up to 4 topics
-        for (uint32_t j = i; j < i + 4 && j < topics.size(); ++j) {
-            json_data["params"][0]["topics"].push_back(topics[j].to_string());
-        }
-        //LOG(INFO) << "start to get logs:" << json_data.dump();
+        // every request include up to 1 topic
+        json_data["params"][0]["topics"].push_back(topics[i].to_string());
+        LOG(INFO) << "start to get logs:" << json_data.dump();
         if (client->write_and_wait(json_data) !=0) [[unlikely]] {
             LOG(ERROR) << "get_filter_logs failed";
             return -1;
         }
+        LOG(INFO) << "end to get logs:" << json_data.dump();
         if (json_data.find("result") == json_data.end()) [[unlikely]] {
             LOG(ERROR) << "get logs failed" << json_data.dump();
             return -1;
@@ -298,12 +297,12 @@ inline int request_call(ClientBase* client, const Address& address, const std::s
         }},
         {"id", 1}
     };  
-    //LOG(INFO) << "request_call:" << json_data.dump();
+    LOG(INFO) << "request_call:" << json_data.dump();
     if (client->write_and_wait(json_data) != 0) [[unlikely]] {
         LOG(ERROR) << "request_call failed";
         return -1;
     }
-    //LOG(INFO) << "request_call ret:" << json_data.dump();
+    LOG(INFO) << "request_call ret:" << json_data.dump();
     if (parse_json(json_data, "result", data) != 0) [[unlikely]] {
         LOG(ERROR) << "eth_call failed: " << json_data.dump();
         return -1;

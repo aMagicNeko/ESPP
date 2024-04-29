@@ -38,6 +38,10 @@ PoolBase::PoolBase(uint32_t token1_arg, uint32_t token2_arg, const Address& addr
     bthread_mutex_init(&_mutex, NULL);
 }
 
+PoolBase::~PoolBase() {
+    bthread_mutex_destroy(&_mutex);
+}
+
 PoolBase* PoolBase::load_from_file(std::ifstream& file) {
     PoolType type;
     file.read(reinterpret_cast<char*>(&type), sizeof(type));
@@ -51,7 +55,7 @@ PoolBase* PoolBase::load_from_file(std::ifstream& file) {
     }
     else if (type == UniswapV3) {
         Address zero_addr;
-        UniswapV3Pool* pool = new UniswapV3Pool(0u, 0u, zero_addr, 0, 0, 0);
+        UniswapV3Pool* pool = new UniswapV3Pool(0u, 0u, zero_addr, 0, 0);
         file.read(const_cast<char*>(reinterpret_cast<const char*>(&pool->token1)), sizeof(token1) + sizeof(token2) + sizeof(address));
         file.read(reinterpret_cast<char*>(&pool->fee), sizeof(pool->fee));
         file.read(reinterpret_cast<char*>(&pool->tick_space), sizeof(pool->tick_space));
@@ -60,9 +64,11 @@ PoolBase* PoolBase::load_from_file(std::ifstream& file) {
         size_t liq_size = 0;
         file.read(reinterpret_cast<char*>(&liq_size), sizeof(size_t));
         for (size_t cur = 0; cur < liq_size; ++cur) {
-            uint128_t x;
-            ::load_from_file(x, file);
-            pool->liquidities.push_back(x);
+            int x;
+            int128_t y;
+            file.read(reinterpret_cast<char*>(&x), sizeof(x));
+            ::load_from_file(y, file);
+            pool->liquidity_net.emplace(x, y);
         }
         return pool;
     }

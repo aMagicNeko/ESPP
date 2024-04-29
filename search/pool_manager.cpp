@@ -177,7 +177,7 @@ UniswapV3Pool* PoolManager::add_uniswapv3_pool(const Address& pool_addr, const A
     add_token(token1);
     uint32_t index0 = _tokens_index[token0];
     uint32_t index1 = _tokens_index[token1];
-    auto p = new UniswapV3Pool(index0, index1, pool_addr, fee, tickspace, 2 * FLAGS_uniswapv3_half_tick_count + 1);
+    auto p = new UniswapV3Pool(index0, index1, pool_addr, fee, tickspace);
     _pools.push_back(p);
     _pools_map[index0].init(1);
     if (_pools_map[index0].seek(index1) == 0) {
@@ -194,7 +194,7 @@ UniswapV3Pool* PoolManager::add_uniswapv3_pool(const Address& pool_addr, const A
 }
 
 int PoolManager::update_pools() {
-    uint32_t failed_cnt = 0;
+    int failed_cnt = 0;
     while (failed_cnt < FLAGS_long_request_failed_limit) {
         uint64_t cur_block = 0;
         if (request_block_number(_client, cur_block) != 0) [[unlikely]] {

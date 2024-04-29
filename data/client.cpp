@@ -154,7 +154,7 @@ int ClientBase::handle_transactions(const std::string& hash) {
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
     set_data(now_ms, id);
     _tx_send_timestamps[id & ((1 << ID_CIRCLE_SHILFT) - 1)] = {now_ms, hash};
-    LOG(DEBUG) << "send eth_getTransactionByHash success";
+    //LOG(DEBUG) << "send eth_getTransactionByHash success";
     return 0;
 }
 

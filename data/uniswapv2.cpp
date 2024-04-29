@@ -166,7 +166,108 @@ void UniswapV2Pool::save_to_file(std::ofstream& file) {
     ::save_to_file(_reserve1, file);
 }
 
-void UniswapV2Pool::get_input_intervals(std::vector<std::pair<uint128_t, uint128_t>>& i) {
-    uint128_t l = 1;
-    i.emplace_back(0, (l << 112) - 1 - _reserve0);
+uint256_t UniswapV2Pool::get_output_boundary(uint256_t max_in, bool direction) const {
+    uint256_t tmp = 0;
+    if (direction) {
+        tmp = (uint256_t(1) << 112) - 1 - _reserve0;
+    }
+    else {
+        tmp = (uint256_t(1) << 112) - 1 - _reserve0;
+    }
+    if (tmp > max_in) {
+        tmp = max_in;
+    }
+    return compute_output(tmp, direction);
+}
+
+inline uint256_t upround_div(uint256_t x, uint256_t y) {
+    return x % y ? (x / y + 1) : x / y;
+}
+
+uint256_t UniswapV2Pool::compute_output(uint256_t in, bool direction) const {
+    if (direction) {
+        uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
+        uint256_t real_in = (1000 - 3) * uint256_t(in);
+        uint256_t numof_token0_after_swap = uint256_t(1000) * _reserve0 + real_in;
+        uint256_t numof_token1_after_swap = upround_div(liq, numof_token0_after_swap);
+        return ((numof_token1_after_swap - uint256_t(1000) * _reserve1) / 1000);
+    }
+    else {
+        uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
+        uint256_t real_in = (1000 - 3) * uint256_t(in);
+        uint256_t numof_token1_after_swap = uint256_t(1000) * _reserve1 + real_in;
+        uint256_t numof_token0_after_swap = upround_div(liq, numof_token1_after_swap);
+        return ((numof_token0_after_swap - uint256_t(1000) * _reserve0) / 1000);
+    }
+}
+
+uint256_t UniswapV2Pool::compute_input(uint256_t out, bool direction) const {
+    if (direction) {
+        uint256_t liq = 1000000 * _reserve0 * _reserve1;
+        uint256_t numof_token1_after_swap = uint256_t(1000) * (_reserve1 - out);
+        uint256_t numof_token0_after_swap = upround_div(liq, numof_token1_after_swap);
+        return upround_div(numof_token0_after_swap - uint256_t(1000) * _reserve0, uint256_t(1000 - 3));
+    }
+    else {
+        uint256_t liq = 1000000 * _reserve0 * _reserve1;
+        uint256_t numof_token0_after_swap = uint256_t(1000) * (_reserve0 - out);
+        uint256_t numof_token1_after_swap = upround_div(liq, numof_token0_after_swap);
+        return upround_div(numof_token1_after_swap - uint256_t(1000) * _reserve1, uint256_t(1000 - 3));
+    }
+}
+
+uint256_t UniswapV2Pool::process_swap(uint256_t in, bool direction) {
+    uint256_t out = compute_output(in, direction);
+    uint128_t new_reserve0 = 0;
+    uint128_t new_reserve1 = 0;
+    if (direction) {
+        new_reserve0 = in.convert_to<uint128_t>() + _reserve0;
+        assert(out < _reserve1);
+        new_reserve1 = _reserve1 - out.convert_to<uint128_t>();
+        assert(uint256_t(new_reserve0) * new_reserve1 >= uint256_t(_reserve0) * _reserve1);
+    }
+    else {
+        new_reserve1 = in.convert_to<uint128_t>() + _reserve1;
+        assert(out < _reserve0);
+        new_reserve0 = _reserve0 - out.convert_to<uint128_t>();
+        assert(uint256_t(new_reserve0) * new_reserve1 >= uint256_t(_reserve0) * _reserve1);
+    }
+    _reserve0 = new_reserve0;
+    _reserve1 = new_reserve1;
+    return out;
+}
+
+std::string UniswapV2Pool::to_string() const {
+    std::stringstream ss;
+    ss << "UniswapV2 pool:" << address.to_string();
+    ss << " token1:" << token1 << " token2:" << token2;
+    ss << " reserve0:" << _reserve0;
+    ss << " reserve1" << _reserve1;
+    return ss.str();
+}
+
+PoolBase* UniswapV2Pool::get_copy() {
+    LockGuard lock(&_mutex);
+    UniswapV2Pool* pool = new UniswapV2Pool(token1, token2, address, _reserve0, _reserve1);
+    return pool;
+}
+
+int UniswapV2Pool::get_tick() const {
+    return 0;
+}
+
+uint256_t UniswapV2Pool::get_liquidit() const {
+    return uint256_t(_reserve0) * _reserve1;
+}
+
+uint256_t UniswapV2Pool::get_reserve0() const {
+    return _reserve0;
+}
+
+uint256_t UniswapV2Pool::get_reserve1() const {
+    return _reserve1;
+}
+
+uint32_t UniswapV2Pool::get_fee_rate() const {
+    return 3000;
 }

@@ -50,6 +50,42 @@ public:
         return result;
     }
 };
+
+template <size_t BitSize>
+class Int {
+public:
+    using ValueType = boost::multiprecision::number<boost::multiprecision::cpp_int_backend<BitSize, BitSize, boost::multiprecision::signed_magnitude, boost::multiprecision::unchecked, void>>;
+    ValueType value;
+    Int(ValueType val = 0) : value(val) {}
+
+    std::string encode() {
+        std::stringstream stream;
+        if (value < 0) {
+            uint256_t tmp = uint256_t((-value));
+            tmp = (std::numeric_limits<uint256_t>::max)() - tmp + 1;
+            stream << std::setfill('f') << std::setw(64) << std::hex << tmp;
+        } else {
+            stream << std::setfill('0') << std::setw(64) << std::hex << value;
+        }
+        return stream.str();
+    }
+
+    static int256_t decode(const std::string& hexStr) {
+        assert(hexStr.length() == 64);
+        uint256_t result;
+        std::stringstream ss;
+        ss << std::hex << hexStr;
+        ss >> result;
+
+        if (result & (uint256_t(1) << 255)) {
+            uint256_t twosComplement = ~result + 1;
+            return int256_t(0) - twosComplement;
+        } else {
+            return result;
+        }
+    }
+};
+
 class Bytes32;
 class DBytes;
 class Address : public SolidityType {
@@ -130,7 +166,7 @@ public:
     std::vector<uint8_t> _data;
     DBytes() {}
     DBytes(const std::string& val) {
-        assert(str.size() % 2 == 0);
+        assert(val.size() % 2 == 0);
         _data.resize(val.size() / 2);
         for (size_t i = 0; i < val.size(); i += 2) {
             unsigned char high = evmc::hex_char_to_byte(val[i]);
@@ -254,6 +290,10 @@ public:
         calls.push_back(call);
     }
 
+    size_t size() const {
+        return calls.size();
+    }
+    
     std::string encode() const override {
         std::stringstream encoded;
         
