@@ -40,6 +40,7 @@ using uint256_t = boost::multiprecision::uint256_t;
 using uint128_t = boost::multiprecision::uint128_t;
 using int256_t = boost::multiprecision::int256_t;
 using int128_t = boost::multiprecision::int256_t;
+using uint512_t = boost::multiprecision::uint512_t;
 
 using json = nlohmann::json;
 

@@ -10,7 +10,7 @@ public:
     uint128_t _reserve1; // uint112
     UniswapV2Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint256_t reserve0_arg, uint256_t reserve1_arg);
     virtual ~UniswapV2Pool() {}
-    int on_event(const LogEntry& log) override;
+    int on_event(const LogEntry& log, bool pending = 0) override;
     void save_to_file(std::ofstream& file) override;
     std::string to_string() const override;
     PoolBase* get_copy() override;

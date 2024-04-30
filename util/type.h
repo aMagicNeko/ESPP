@@ -224,6 +224,22 @@ public:
         }
         return result;
     }
+
+    int256_t to_int256(size_t l, size_t r) const {
+        int256_t result = 0;
+        bool isNegative = _data[l] & 0x80;
+        for (size_t cur = l; cur < r; ++cur) {
+            result <<= 8;
+            result += _data[cur];
+        }
+        if (isNegative) {
+            int256_t mask = ((uint512_t(1) << ((r - l) * 8)) - 1).convert_to<int256_t>();
+            result = (result ^ mask) + 1;
+            result = -result;
+        }
+        return result;
+    }
+
     static int decode_32(const std::string& result, std::vector<std::string>& res) {
         std::stringstream encoded;
         encoded << result.substr(0, 64);

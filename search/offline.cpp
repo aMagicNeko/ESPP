@@ -1,6 +1,7 @@
 #include "search/offline.h"
 #include "search/pool_manager.h"
 #include "search/analytical_solution.h"
+#include "gateway/gateway.h"
 #include <deque>
 void* search_thread_wrap(void* arg) {
     OfflineSearch::instance()->search();
@@ -71,6 +72,61 @@ void OfflineSearch::dfs(uint32_t start_token, butil::FlatSet<uint32_t>& visited_
     }
 }
 
+SearchResult compute_impl(const std::vector<PoolBase*>& path, const std::vector<bool>& direction, const std::vector<uint32_t>& pool_index) {
+    uint256_t accumulate_input = 0;
+    uint256_t accumulate_output = 0;
+    uint256_t max = 0;
+    uint256_t res_in = 0;
+    while (true) {
+        uint256_t cur_boundary = (uint256_t(1) << 112);
+        for (uint32_t i = 0; i < path.size(); ++i) {
+            LOG(INFO) << "tick: " << path[i]->get_tick() << " liquidity:" << path[i]->get_liquidit();
+        }
+        for (uint32_t i = 0; i < path.size(); ++i) {
+            cur_boundary = path[i]->get_output_boundary(cur_boundary, direction[i]);
+            if (cur_boundary == 0) {
+                // end
+                break;
+            }
+        }
+        if (cur_boundary == 0) {
+            // end
+            break;
+        }
+        for (uint32_t i = path.size() - 1; i >= 0; --i) {
+            cur_boundary = path[i]->compute_input(cur_boundary, direction[i]);
+        }
+        uint256_t token_in = get_analytical_solution(path, direction, cur_boundary);
+        if (token_in > cur_boundary) {
+            token_in = cur_boundary;
+        }
+        uint256_t token_out = token_in;
+        for (uint32_t i = 0; i < path.size(); ++i) {
+            token_out = path[i]->compute_output(token_out, direction[i]);
+        }
+        LOG(INFO) << "token in:" << token_in + accumulate_input << " token_out:" << token_out + accumulate_output;
+        uint256_t tmp = token_out + accumulate_output - token_in - accumulate_input;
+        if (tmp > max) {
+            max = tmp;
+            res_in = token_in + accumulate_input;
+        }
+        // to next round
+        accumulate_input += cur_boundary;
+        for (uint32_t i = 0; i < path.size(); ++i) {
+            cur_boundary = path[i]->process_swap(cur_boundary, direction[i]);
+        }
+        accumulate_output += cur_boundary;
+    }
+    uint32_t token_index = direction[0] ? path[0]->token1 : path[0]->token2;
+    uint32_t to_eth_pool_index = 0;
+    uint256_t eth_out = PoolManager::instance()->token_to_eth(token_index, max, to_eth_pool_index);
+    SearchResult result {pool_index, res_in, eth_out};
+    for (auto p : path) {
+        delete p;
+    }
+    return result;
+}
+
 void OfflineSearch::compute(const std::vector<uint32_t>& path, const std::vector<bool>& direction) {
     LOG(INFO) << "compute start:" << path.size();
     std::vector<PoolBase*> pools;
@@ -78,36 +134,8 @@ void OfflineSearch::compute(const std::vector<uint32_t>& path, const std::vector
         auto p = PoolManager::instance()->_pools[i]->get_copy();
         pools.push_back(p);
     }
-    uint256_t accumulate_input = 0;
-    uint256_t accumulate_output = 0;
-    while (true) {
-        uint256_t cur_boundary = (uint256_t(1) << 112);
-        for (uint32_t i = 0; i < pools.size(); ++i) {
-            LOG(INFO) << "tick: " << pools[i]->get_tick() << " liquidity:" << pools[i]->get_liquidit();
-        }
-        for (uint32_t i = 0; i < pools.size(); ++i) {
-            cur_boundary = pools[i]->get_output_boundary(cur_boundary, direction[i]);
-        }
-        for (uint32_t i = pools.size() - 1; i >= 0; --i) {
-            cur_boundary = pools[i]->compute_input(cur_boundary, direction[i]);
-        }
-        uint256_t token_in = get_analytical_solution(pools, direction, cur_boundary);
-        assert(token_in <= cur_boundary);
-        uint256_t token_out = token_in;
-        for (uint32_t i = 0; i < pools.size(); ++i) {
-            token_out = pools[i]->compute_output(token_out, direction[i]);
-        }
-        LOG(INFO) << "token in:" << token_in + accumulate_input << " token_out:" << token_out + accumulate_output;
-        // to next round
-        accumulate_input += cur_boundary;
-        for (uint32_t i = 0; i < pools.size(); ++i) {
-            cur_boundary = pools[i]->process_swap(cur_boundary, direction[i]);
-        }
-        accumulate_output += cur_boundary;
-    }
-    for (auto p : pools) {
-        delete p;
-    }
+    SearchResult result = compute_impl(pools, direction, path);
+    GateWay::instance()->notice_search_offline_result(result);
 }
 
 

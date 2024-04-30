@@ -87,11 +87,13 @@ void PoolManager::load_from_file() {
     }
     LOG(INFO) << "load pools from file success";
 }
+const Address WETH_ADDR("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
 
 int PoolManager::init(ClientBase* client) {
     _client = client;
     _tokens_index.init(1);
     _pools_address_map.init(1);
+    add_token(WETH_ADDR);
     if (std::filesystem::exists("pools.dat")) {
         load_from_file();
     } else {
@@ -282,4 +284,25 @@ void PoolManager::on_head(const std::string& parent_hash) {
     bthread_t bid = 0;
     auto p = new std::string(parent_hash);
     bthread_start_background(&bid, nullptr, update_pools_wrap, p);
+}
+
+uint256_t PoolManager::token_to_eth(uint32_t token_index, uint256_t input, uint32_t& pool_index) {
+    uint256_t max_ret = 0;
+    for (auto p : _pools_map[0][token_index]) {
+        PoolBase* pool = _pools[p]->get_copy();
+        uint256_t out = pool->compute_output(input, 1);
+        if (out > max_ret) {
+            max_ret = out;
+            pool_index = p;
+        }
+    }
+    for (auto p : _pools_map[token_index][0]) {
+        PoolBase* pool = _pools[p]->get_copy();
+        uint256_t out = pool->compute_output(input, 0);
+        if (out > max_ret) {
+            max_ret = out;
+            pool_index = p;
+        }
+    }
+    return max_ret;
 }

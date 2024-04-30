@@ -16,8 +16,10 @@ public:
     int check_parent(const std::string& parent_hash) const;
     void on_head(const std::string& parent_hash);
     uint32_t tokens_num() { return _tokens_index.size(); }
+    uint256_t token_to_eth(uint32_t token_index, uint256_t input, uint32_t& pool_index);
 private:
     friend class OfflineSearch;
+    friend class OnlineSearch;
     butil::FlatMap<Address, uint32_t, std::hash<Address>> _tokens_index;
     std::vector<Address> _tokens_address;
     std::vector<butil::FlatMap<uint32_t, std::vector<uint32_t>>> _pools_map;

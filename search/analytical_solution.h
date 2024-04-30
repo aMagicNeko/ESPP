@@ -6,7 +6,7 @@ uint256_t get_analytical_solution_length4(const std::vector<PoolBase*>& pools, c
 uint256_t get_analytical_solution_length5(const std::vector<PoolBase*>& pools, const std::vector<bool>& direction,  uint256_t boundary);
 uint256_t get_analytical_solution_length6(const std::vector<PoolBase*>& pools, const std::vector<bool>& direction,  uint256_t boundary);
 
-inline uint256_t get_analytical_solution(std::vector<PoolBase*>& pools, const std::vector<bool>& direction, uint256_t boundary) {
+inline uint256_t get_analytical_solution(const std::vector<PoolBase*>& pools, const std::vector<bool>& direction, uint256_t boundary) {
     if (pools.size() == 2) {
         return get_analytical_solution_length2(pools, direction, boundary);
     }

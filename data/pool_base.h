@@ -15,7 +15,7 @@ public:
     PoolBase(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg);
     PoolBase(PoolBase&) = delete;
     virtual ~PoolBase();
-    virtual int on_event(const LogEntry& log) = 0;
+    virtual int on_event(const LogEntry& log, bool pending = 0) = 0;
     virtual void save_to_file(std::ofstream& file) = 0;
     virtual std::string to_string() const = 0;
     virtual PoolBase* get_copy() = 0;

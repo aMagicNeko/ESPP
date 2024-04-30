@@ -17,7 +17,7 @@ public:
     std::map<int, int128_t> liquidity_net; // we only save ticks within a word or in neighbor word
     UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint64_t fee_arg, uint64_t tick_space_arg);
     virtual ~UniswapV3Pool() {}
-    int on_event(const LogEntry& log) override;
+    int on_event(const LogEntry& log, bool pending = 0) override;
     void save_to_file(std::ofstream& file) override;
     std::string to_string() const override;
     PoolBase* get_copy() override;

@@ -257,37 +257,88 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
                 int min_tick = ((word_pos - 1) << 8) * pools[j]->tick_space;
                 int max_tick = (((word_pos + 2) << 8) - 1) * pools[j]->tick_space;
                 // sentinel
-                pools[j]->liquidity_net[min_tick] = (std::numeric_limits<int128_t>::max)();
-                pools[j]->liquidity_net[max_tick] = (std::numeric_limits<int128_t>::min)();
+                if (!pools[j]->liquidity_net.count(min_tick)) {
+                    pools[j]->liquidity_net[min_tick] = (std::numeric_limits<int128_t>::max)();
+                }
+                if (!pools[j]->liquidity_net.count(max_tick)) {
+                    pools[j]->liquidity_net[max_tick] = (std::numeric_limits<int128_t>::min)();
+                }
                 LOG(INFO) << pools[j]->to_string();
                 ++j;
             }
         }
     }
-    assert(j == pools.size());
+    // possbily not eq
+    //assert(j == pools.size());
     return 0;
 }
 
+const static Bytes32 s_mint_head = Bytes32(HashAndTakeAllBytes("Mint(address,address,int24,int24,uint128,uint256,uint256)"));
+const static Bytes32 s_burn_head = Bytes32(HashAndTakeAllBytes("Burn(address,int24,int24,uint128,uint256,uint256)"));
+const static Bytes32 s_swap_head = Bytes32(HashAndTakeAllBytes("Swap(address,address,int256,int256,uint160,uint128,int24)"));
+const static Bytes32 s_flash_head = Bytes32(HashAndTakeAllBytes("Flash(address,address,uint256,uint256,uint256,uint256)"));
+
 void UniswapV3Pool::add_topics(std::vector<Bytes32>& topics) {
-    topics.push_back(Bytes32(HashAndTakeAllBytes("Mint(address,address,int24,int24,uint128,uint256,uint256)")));
-    topics.push_back(HashAndTakeAllBytes("Burn(address,int24,int24,uint128,uint256,uint256)"));
-    topics.push_back(HashAndTakeAllBytes("Swap(address,address,int256,int256,uint160,uint128,int24)"));
-    topics.push_back(HashAndTakeAllBytes("Flash(address,address,uint256,uint256,uint256,uint256)"));
+    topics.push_back(s_mint_head);
+    topics.push_back(s_burn_head);
+    topics.push_back(s_swap_head);
+    //topics.push_back(s_flash_head);
 }
 
 UniswapV3Pool::UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, const Address& address_arg, uint64_t fee_arg, uint64_t tick_space_arg) 
         :  PoolBase(token1_arg, token2_arg, address_arg), fee(fee_arg), tick_space(tick_space_arg) {
 }
 
-int UniswapV3Pool::on_event(const LogEntry& log) {
-    // memory fence is in the wrapper function
-    auto p = s_pool_address_set.seek(log.address);
-    if (p) {
-        return 0;
+int UniswapV3Pool::on_event(const LogEntry& log, bool pending) {
+    if (pending) {
+        if (log.topics[0] == s_mint_head) {
+            int tick_upper = Int<256>::decode(log.topics[2].to_string()).convert_to<int>();
+            int tick_lower = Int<256>::decode(log.topics[3].to_string()).convert_to<int>();
+            uint128_t amount = log.data.to_uint256(32, 64).convert_to<uint128_t>();
+            int word_pos = get_word_pos(tick, tick_space);
+            int min_tick = ((word_pos - 1) << 8) * tick_space;
+            int max_tick = (((word_pos + 2) << 8) - 1) * tick_space;
+            if (tick_lower >= max_tick || tick_lower <= min_tick) {
+                return 0;
+            }
+            liquidity_net[tick_lower] += amount;
+            liquidity_net[tick_lower] -= amount;
+            if (tick >= tick_lower && tick <= tick_upper) {
+                liquidity += amount;
+            }
+        }
+        else if (log.topics[0] == s_burn_head) {
+            int tick_upper = Int<256>::decode(log.topics[2].to_string()).convert_to<int>();
+            int tick_lower = Int<256>::decode(log.topics[3].to_string()).convert_to<int>();
+            uint128_t amount = log.data.to_uint256(32, 64).convert_to<uint128_t>();
+            int word_pos = get_word_pos(tick, tick_space);
+            int min_tick = ((word_pos - 1) << 8) * tick_space;
+            int max_tick = (((word_pos + 2) << 8) - 1) * tick_space;
+            if (tick_lower >= max_tick || tick_lower <= min_tick) {
+                return 0;
+            }
+            liquidity_net[tick_lower] -= amount;
+            liquidity_net[tick_lower] += amount;
+            if (tick >= tick_lower && tick <= tick_upper) {
+                liquidity -= amount;
+            }
+        }
+        else if (log.topics[0] == s_swap_head) {
+            liquidity = log.data.to_uint256(96, 128).convert_to<uint128_t>();
+            tick = log.data.to_int256(128, 160).convert_to<int>();
+            assert(Int<256>::decode(log.data.to_string().substr(256)) == tick);
+        }
     }
-    LOG(INFO) << "matched uniswapV3 log, pool:" << log.address.to_string();
-    s_on_event_pools.push_back(this);
-    s_pool_address_set.insert(log.address);
+    else {
+        // memory fence is in the wrapper function
+        auto p = s_pool_address_set.seek(log.address);
+        if (p) {
+            return 0;
+        }
+        LOG(INFO) << "matched uniswapV3 log, pool:" << log.address.to_string();
+        s_on_event_pools.push_back(this);
+        s_pool_address_set.insert(log.address);
+    }
     return 0;
 }
 
@@ -482,14 +533,20 @@ uint256_t getNextSqrtPriceFromOutput(uint256_t sqrtPX96, uint128_t liquidity, ui
 }
 
 uint256_t UniswapV3Pool::get_output_boundary(uint256_t max_in, bool direction) const {
-    assert(liquidity != 0);
+    if (liquidity == 0 || max_in == 0) {
+        return 0; // end
+    }
     uint256_t out = 0;
     if (direction) {
-        uint256_t next_sqrt_price = getSqrtRatioAtTick(tick - tick_space);
+        auto p = --liquidity_net.lower_bound(tick);
+        int next_tick = p->first;
+        uint256_t next_sqrt_price = getSqrtRatioAtTick(next_tick);
         out = getAmount1Delta(next_sqrt_price, sqrt_price, liquidity, true);
     }
     else {
-        uint256_t next_sqrt_price = getSqrtRatioAtTick(tick + tick_space);
+        auto p = liquidity_net.upper_bound(tick);
+        int next_tick = p->first;
+        uint256_t next_sqrt_price = getSqrtRatioAtTick(next_tick);
         out = getAmount0Delta(next_sqrt_price, sqrt_price, liquidity, true);
     }
     uint256_t tmp = compute_output(max_in, direction);
@@ -540,15 +597,17 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
             cur_ratiao = next_ratio;
             tick_cur = next_tick;
             int256_t tmp1 = cur_liquidity.convert_to<int256_t>() - p->second;
-            assert(tmp1 >= 0);
+            if (tmp < 0) {
+                // for sentinel
+                tmp = 0;
+            }
             cur_liquidity = tmp1.convert_to<uint128_t>();
         }
     }
     else {
         while (true) {
             auto p = liquidity_net.upper_bound(tick_cur);
-            auto pp = liquidity_net.end();
-            if (p == --pp) {
+            if (p == liquidity_net.end()) {
                 // out of sentinel
                 // not gotten tick
                 tick_after = tick_cur;
@@ -576,7 +635,10 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
             cur_ratiao = next_ratio;
             tick_cur = next_tick;
             int256_t tmp1 = cur_liquidity.convert_to<int256_t>() + p->second;
-            assert(tmp1 >= 0);
+            if (tmp < 0) {
+                // for sentinel
+                tmp = 0;
+            }
             cur_liquidity = tmp1.convert_to<uint128_t>();
         }
     }
@@ -618,15 +680,17 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
             out -= step_amount;
             tick_cur = next_tick;
             int256_t tmp = cur_liquidity.convert_to<int256_t>() - p->second;
-            assert(tmp >= 0);
+            if (tmp < 0) {
+                // for sentinel
+                tmp = 0;
+            }
             cur_liquidity = tmp.convert_to<uint128_t>();
         }
     }
     else {
          while (true) {
             auto p = liquidity_net.upper_bound(tick_cur);
-            auto pp = liquidity_net.end();
-            if (p == --pp) {
+            if (p == liquidity_net.end()) {
                 // out of sentinel
                 // not gotten tick
                 uint512_t tmp = in * 1000000;
@@ -646,7 +710,10 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
             tick_cur += tick_space;
             tick_cur = next_tick;
             int256_t tmp = cur_liquidity.convert_to<int256_t>() + p->second;
-            assert(tmp >= 0);
+            if (tmp < 0) {
+                // for sentinel
+                tmp = 0;
+            }
             cur_liquidity = tmp.convert_to<uint128_t>();
         }
     }

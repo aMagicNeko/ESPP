@@ -144,7 +144,7 @@ UniswapV2Pool::UniswapV2Pool(uint32_t token1_arg, uint32_t token2_arg, const Add
     _reserve1 = reserve1_arg.convert_to<uint128_t>();
 }
 
-int UniswapV2Pool::on_event(const LogEntry& log) {
+int UniswapV2Pool::on_event(const LogEntry& log, bool pending) {
     LockGuard lock(&_mutex);
     if (!(log.topics[0] == s_log_topic) || log.data.size() != 32 * 2) [[unlikely]] {
         LOG(ERROR) << "invalid swap data: " << log.data.to_string();
