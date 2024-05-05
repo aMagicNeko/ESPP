@@ -8,7 +8,8 @@
 DEFINE_int32(long_request_failed_limit, 50, "max try num in a big operation");
 DECLARE_int32(batch_size);
 DECLARE_bool(simulate_check);
-
+DEFINE_bool(simulate_based_on_all_prev_tx, false, "whether to simulate based on order of pending tx(keep the change of prev tx)");
+DEFINE_bool(check_tx_order, false, "whether to check the order of pending tx prev block");
 // on a new head, to check the order of prevent txs of the pre block
 void* check_order_wrap(void* arg) {
     __gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
@@ -92,17 +93,19 @@ int TxPool::get_pending_txs() {
 }
 
 int TxPool::on_head() {
-    auto tmp = new __gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
-            __gnu_pbds::rb_tree_tag, __gnu_pbds::tree_order_statistics_node_update>;
-    {
-        LockGuard lock(&_mutex);
-        _txs.swap(*tmp);
-        _accounts.clear();
-        _txs.clear();
-    }
     bthread_t bid;
     bthread_start_background(&bid, nullptr, get_pending_txs_wrap, NULL);
-    bthread_start_background(&bid, nullptr, check_order_wrap, tmp);
+    if (FLAGS_check_tx_order) {
+        auto tmp = new __gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
+            __gnu_pbds::rb_tree_tag, __gnu_pbds::tree_order_statistics_node_update>;
+        {
+            LockGuard lock(&_mutex);
+            _txs.swap(*tmp);
+            _accounts.clear();
+            _txs.clear();
+        }
+        bthread_start_background(&bid, nullptr, check_order_wrap, tmp);
+    }
     return 0;
 }
 
@@ -145,7 +148,12 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
         // update account tx
         update_txs(account, tx->nonce);
     }
-    evmc::SimulateManager::instance()->notice_change(change_idx);
+    if (FLAGS_simulate_based_on_all_prev_tx) {
+        evmc::SimulateManager::instance()->notice_change(change_idx);
+    }
+    else {
+        evmc::SimulateManager::instance()->notice_tx(tx);
+    }
 }
 
 void TxPool::add_simulate_tx(std::shared_ptr<Transaction> tx) {

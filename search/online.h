@@ -16,6 +16,7 @@ public:
 private:
     void dfs_impl(uint32_t pool_index, uint32_t start_token, butil::FlatSet<uint32_t>& visited_set, uint32_t cur_token, uint32_t len,
          std::vector<uint32_t>& path, std::vector<bool>& direction, bool cur_direction);
+    void sandwich();
     void compute(const std::vector<uint32_t>& path, const std::vector<bool>& direction);
     butil::FlatMap<uint32_t, butil::FlatMap<uint32_t, std::vector<uint32_t>>> _pools_map;
     butil::FlatMap<uint32_t, butil::FlatMap<uint32_t, std::vector<uint32_t>>> _pools_reverse_map;

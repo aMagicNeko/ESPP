@@ -58,6 +58,7 @@ void OnlineSearch::search(std::shared_ptr<Transaction> tx, const std::vector<Log
         start_token = item.second->token2;
         dfs(start_token, visited_set, item.second->token1, 1, path, direction);
     }
+    sandwich();
 }
 
 inline void OnlineSearch::dfs_impl(uint32_t pool_index, uint32_t start_token, butil::FlatSet<uint32_t>& visited_set, uint32_t cur_token, uint32_t len,
@@ -130,4 +131,8 @@ void OnlineSearch::compute(const std::vector<uint32_t>& path, const std::vector<
     }
     SearchResult result = compute_impl(pools, direction, path);
     GateWay::instance()->notice_search_online_result(result, _tx);
+}
+
+void OnlineSearch::sandwich() {
+    
 }

@@ -226,7 +226,7 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
         for (auto [x,y] : pools[i]->liquidity_net) {
             multi_call.add_call(Call(pools[i]->address, ticks_selector + DBytes(Int<256>(x).encode())));
         }
-        if (multi_call.size() >= FLAGS_batch_size || i == pools.size() - 1) {
+        if ((multi_call.size() >= FLAGS_batch_size || i == pools.size() - 1) && multi_call.size()) {
             int failed_cnt = 0;
             std::vector<std::string> res;
             while (true) {
@@ -735,7 +735,8 @@ std::string UniswapV3Pool::to_string() const {
     ss << "UniswapV3 pool:" << address.to_string();
     ss << " token1:" << token1 << " token2:" << token2;
     ss << " tick:" << tick;
-    ss << " sqrt_price" << sqrt_price;
+    ss << " sqrt_price:" << sqrt_price;
+    ss << "liqudity:" << liquidity;
     ss << " liquidity_net:";
     for (auto [x, y] : liquidity_net) {
         ss << x << " " << y << ' ';

@@ -50,6 +50,8 @@ public:
     uint64_t gas_comsumption(uint64_t gas_limit, const Result& res);
     void check_simulate();
     int get_nonce(const address& addr, uint64_t& nonce);
+    void notice_tx(std::shared_ptr<Transaction> tx);
+    void simulate_tx_impl(std::shared_ptr<Transaction> tx, int index = 0);
 private:
     evmc_message build_message(std::shared_ptr<Transaction> tx, int64_t execution_gas_limit) noexcept;
     butil::FlatMap<address, uint256be, std::hash<address>> _balence_map;

@@ -4,8 +4,10 @@
 #include "util/type.h"
 #include "util/evmc_type.h"
 #include "util/latency.h"
+#include "search/online.h"
 DECLARE_int32(wait_timeout_ms);
 DEFINE_bool(simulate_check, false, "whether using history txs to check the simulation");
+DECLARE_bool(simulate_based_on_all_prev_tx);
 namespace evmc {
 Code::Code(const std::string& str) {
     if (str.size() % 2 != 0)  {
@@ -57,7 +59,9 @@ void* simulate_thread(void*) {
 void SimulateManager::start(ClientBase* client) {
     _client = client;
     bthread_t bid;
-    bthread_start_urgent(&bid, NULL, simulate_thread, NULL);
+    if (FLAGS_simulate_based_on_all_prev_tx) {
+        bthread_start_urgent(&bid, NULL, simulate_thread, NULL);
+    }
 }
 
 int SimulateManager::get_balance(const address& addr, uint256be& val) {
@@ -259,6 +263,79 @@ int64_t compute_tx_intrinsic_cost(evmc_revision rev, std::shared_ptr<Transaction
            initcode_cost;
 }
 
+void SimulateManager::simulate_tx_impl(std::shared_ptr<Transaction> tx, int index) {
+    address from = tx->from.value;
+    const evmc_bytes32* blob_hashes = 0; // fake
+    uint32_t blob_hash_count = 0; // fake
+    bthread_mutex_lock(&_mutex);// for head info or result
+    evmc_tx_context context {
+        add_bytes32(bytes32(tx->priority_fee), _base_fee),
+        from,
+        _block_coinbase,
+        _block_number,
+        _time_stamp,
+        _gas_limit,
+        _prev_randao,
+        _chain_id,
+        _base_fee,
+        _blob_base_fee,
+        blob_hashes,
+        blob_hash_count,
+        0,
+        0
+    };
+    bthread_mutex_unlock(&_mutex);
+    SimulateHost* prev = 0;
+    if (index != 0) {
+        prev = _hosts[index - 1].get();
+    }
+    auto host = std::make_shared<SimulateHost>(_vm, prev, tx->from, tx->nonce, context);
+    if (FLAGS_simulate_based_on_all_prev_tx) {
+        if (_hosts.size() <= index) {
+            _hosts.push_back(host);
+        }
+        else {
+            _hosts[index] = host;
+        }
+    }
+    host->set_nonce(from, tx->nonce);
+    int64_t gas1 = compute_tx_intrinsic_cost(EVMC_LATEST_STABLE_REVISION, tx);
+    bytes32 balance(0);
+    get_balance(tx->from.value, balance);
+    if (tx->gas <= static_cast<uint64_t>(gas1) || balance < uint256_to_bytes32(tx->gas * tx->priority_fee)) [[unlikely]] {
+        // failed tx
+        return;
+    }
+    evmc_message msg = build_message(tx, tx->gas - gas1);
+    LOG(INFO) << "msg:" << evmc_message_to_string(msg);
+    // balance change on 
+    LOG(INFO) << "start to simulate:" << index;
+    Result res = host->call(msg);
+    LOG(INFO) << "end to simulte result:" << index << evmc_result_to_string(res);
+    LOG(INFO) << "simulate request count:" << _request_count;
+    _request_count = 0;
+    auto tmp = host->get_logs();
+    for (auto& p:tmp) {
+        LOG(INFO) << "topics:" << p.to_string();
+    }
+    LOG(INFO) << "gas consumption:" << gas_comsumption(tx->gas, res);
+    if (host->error()) [[unlikely]] {
+        LOG(ERROR) << "simulate client error";
+        _change_idx.store(0);
+        return;
+    }
+    if (FLAGS_simulate_check) [[unlikely]] {
+        _results.emplace_back(res.release_raw());
+        _logs.push_back(host->get_logs());
+        for (auto& l:_logs.back()) {
+            LOG(INFO) << l.to_string();
+        }
+    }
+    // do arb search
+    OnlineSearch search;
+    search.search(tx, host->get_logs());
+}
+
 void SimulateManager::run_in_loop() {
     while (true) {
         timespec wait_abstime = butil::microseconds_to_timespec(butil::gettimeofday_us()
@@ -276,72 +353,7 @@ void SimulateManager::run_in_loop() {
                 // new head, txs is clear; or all pending txs simulated
                 break;
             }
-            SimulateHost* prev = 0;
-            if (cur != 0) [[likely]] {
-                prev = _hosts[cur - 1].get();
-            }
-            const evmc_bytes32* blob_hashes = 0; // fake
-            uint32_t blob_hash_count = 0; // fake
-            address from = tx->from.value;
-            bthread_mutex_lock(&_mutex);// for head info or result
-            evmc_tx_context context {
-                add_bytes32(bytes32(tx->priority_fee), _base_fee),
-                from,
-                _block_coinbase,
-                _block_number,
-                _time_stamp,
-                _gas_limit,
-                _prev_randao,
-                _chain_id,
-                _base_fee,
-                _blob_base_fee,
-                blob_hashes,
-                blob_hash_count,
-                0,
-                0
-            };
-            bthread_mutex_unlock(&_mutex);
-            auto host = std::make_shared<SimulateHost>(_vm, prev, tx->from, tx->nonce, context);
-            if (_hosts.size() <= cur) {
-                _hosts.push_back(host);
-            }
-            else {
-                _hosts[cur] = host;
-            }
-            host->set_nonce(from, tx->nonce);
-            int64_t gas1 = compute_tx_intrinsic_cost(EVMC_LATEST_STABLE_REVISION, tx);
-            bytes32 balance(0);
-            get_balance(tx->from.value, balance);
-            if (tx->gas <= static_cast<uint64_t>(gas1) || balance < uint256_to_bytes32(tx->gas * tx->priority_fee)) [[unlikely]] {
-                // failed tx
-                continue;
-            }
-            evmc_message msg = build_message(tx, tx->gas - gas1);
-            LOG(INFO) << "msg:" << evmc_message_to_string(msg);
-            // balance change on 
-            LOG(INFO) << "start to simulate:" << cur;
-            Result res = host->call(msg);
-            LOG(INFO) << "end to simulte result:" << cur << evmc_result_to_string(res);
-            LOG(INFO) << "simulate request count:" << _request_count;
-            _request_count = 0;
-            auto tmp = host->get_logs();
-            for (auto& p:tmp) {
-                LOG(INFO) << "topics:" << p.to_string();
-            }
-            LOG(INFO) << "gas consumption:" << gas_comsumption(tx->gas, res);
-            if (host->error()) [[unlikely]] {
-                LOG(ERROR) << "simulate client error";
-                _change_idx.store(0);
-                continue;
-            }
-            TxPool::instance()->notice_simulate_result(cur, host->get_logs());
-            if (FLAGS_simulate_check) [[unlikely]] {
-                _results.emplace_back(res.release_raw());
-                _logs.push_back(host->get_logs());
-                for (auto& l:_logs.back()) {
-                    LOG(INFO) << l.to_string();
-                }
-            }
+            simulate_tx_impl(tx, cur);
         }
         if (FLAGS_simulate_check) [[unlikely]] {
             if (_check_butex->load() == 1) [[likely]] {
@@ -465,5 +477,16 @@ void SimulateManager::check_simulate() {
             // check gas
     }
 }
+
+void* wrap_simulate_tx(void* arg) {
+    std::shared_ptr<Transaction> tx(Transaction*(arg));
+    SimulateManager::instance()->simulate_tx_impl(tx);
+    return NULL;
 }
 
+void SimulateManager::notice_tx(std::shared_ptr<Transaction> tx) {
+    Transaction* transaction_ptr = new Transaction(*tx);
+    bthread_t bid = 0;
+    bthread_start_background( &bid, NULL, wrap_simulate_tx, transaction_ptr);
+}
+}
