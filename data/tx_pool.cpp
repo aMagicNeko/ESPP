@@ -208,6 +208,7 @@ bool TxPool::has_account(const Address& from) const {
 int TxPool::init(ClientBase* client) {
     _accounts.init(1500);
     _client = client;
+    _raw_txs.init(1);
     s_get_pending_txs_wrap_status.store(0);
     return 0;
 }
@@ -225,6 +226,6 @@ int TxPool::get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<u
     return 0;
 }
 
-void TxPool::notice_simulate_result(size_t index, const std::vector<LogEntry>& logs) {
-
+void TxPool::add_raw_tx(const std::string& hash, const std::string& raw_tx) {
+    _raw_txs.insert(hash, raw_tx);
 }

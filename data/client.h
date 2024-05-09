@@ -20,8 +20,17 @@ public:
     int subscribe_headers();
     int subscribe_transactions();
     int handle_transactions(const json& hash, uint32_t id = 0);
+    uint64_t base_fee() {
+        LockGuard lock(&_block_info_mutex);
+        return _block_info.base_fee;
+    }
+    uint64_t number() {
+        LockGuard lock(&_block_info_mutex);
+        return _block_info.number;
+    }
 protected:
     int set_fd(int fd);
+    int _client_fd;
     virtual int read(json &param) = 0;
     virtual int _write(const json &param) = 0;
 private:
@@ -32,7 +41,6 @@ private:
     int get_data(json&, uint32_t id);
     int get_butex(std::atomic<uint32_t>** butex, uint32_t id);
     static void* run(void* arg);
-    int _client_fd;
     bthread_t _bid;
     int _stop = 0;
     std::atomic<uint32_t> _id;
@@ -43,6 +51,8 @@ private:
     std::vector<json> _data_vec;
     // time, hash
     std::vector<std::pair<uint64_t, std::string>> _tx_send_timestamps;
+    // id % size -> hash
+    std::vector<std::string> _raw_tx;
     // time, from
     std::vector<std::pair<uint64_t, std::string>> _nonce_send_timestamps;
     // approximate to 2 times latency between the node and client
@@ -54,6 +64,7 @@ private:
     // approximate to 2 times latency between the node and client
     // in ms
     bvar::LatencyRecorder _nonce_latency;
+    bthread_mutex_t _block_info_mutex;
     BlockInfo _block_info;
     int _inited; // not first head recieved
     bthread_mutex_t _write_mutex;

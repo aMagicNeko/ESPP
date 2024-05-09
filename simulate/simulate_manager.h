@@ -60,6 +60,11 @@ private:
     butil::FlatMap<int64_t, bytes32> _block_hash;
     butil::FlatMap<address, uint64_t, std::hash<address>> _nonce_map;
     std::vector<std::shared_ptr<SimulateHost>> _hosts;
+    bthread_mutex_t _balance_mutex;
+    bthread_mutex_t _code_mutex;
+    bthread_mutex_t _storage_mutex;
+    bthread_mutex_t _block_hash_mutex;
+    bthread_mutex_t _nonce_map_mutex;
     bthread_mutex_t _mutex;
     ClientBase* _client;
     std::atomic<int> _change_idx;

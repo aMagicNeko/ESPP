@@ -49,6 +49,11 @@ SimulateManager::SimulateManager() : _request_latency("request_latency") {
     _request_block_number = 0;
     _vm = new VM(evmc_create_evmone());
     _request_count = 0;
+    bthread_mutex_init(&_balance_mutex, 0);
+    bthread_mutex_init(&_code_mutex, 0);
+    bthread_mutex_init(&_storage_mutex, 0);
+    bthread_mutex_init(&_block_hash_mutex, 0);
+    bthread_mutex_init(&_nonce_map_mutex, 0);
 }
 
 void* simulate_thread(void*) {
@@ -65,6 +70,7 @@ void SimulateManager::start(ClientBase* client) {
 }
 
 int SimulateManager::get_balance(const address& addr, uint256be& val) {
+    LockGuard lock(&_balance_mutex);
     auto p = _balence_map.seek(addr);
     if (p == 0) {
         ++_request_count;
@@ -80,6 +86,7 @@ int SimulateManager::get_balance(const address& addr, uint256be& val) {
 }
 
 int SimulateManager::get_storage(const address& addr, const bytes32& key, bytes32& value) {
+    LockGuard lock(&_storage_mutex);
     auto p = _storage_map.seek(addr);
     if (p == 0) {
         p = _storage_map.insert(addr, butil::FlatMap<bytes32, bytes32, std::hash<bytes32>>());
@@ -100,12 +107,18 @@ int SimulateManager::get_storage(const address& addr, const bytes32& key, bytes3
 }
 
 int SimulateManager::get_code(const address& addr, std::shared_ptr<Code>* c) {
+    if (c) {
+        bthread_mutex_lock(&_code_mutex);
+    }
     std::string code_str;
     std::string addr_str = evmc_address_to_str(addr);
     ++_request_count;
     LatencyWrapper latency(_request_latency);
     DBytes code_tmp;
     if (request_code(_client, addr, code_tmp, _request_block_number) != 0) {
+        if (c) {
+            bthread_mutex_unlock(&_code_mutex);
+        }
         return -1;
     }
     std::shared_ptr<Code> code = std::make_shared<Code>(code_tmp._data.data(), code_tmp._data.size());
@@ -114,11 +127,13 @@ int SimulateManager::get_code(const address& addr, std::shared_ptr<Code>* c) {
     if (c != 0) {
         // 传出
         *c = code;
+        bthread_mutex_unlock(&_code_mutex);
     }
     return 0;
 }
 
 int SimulateManager::get_code_size(const address& addr, size_t& size) {
+    LockGuard lock(&_code_mutex);
     auto p = _code_map.seek(addr);
     if (p == NULL) {
         if (get_code(addr) != 0) {
@@ -132,6 +147,7 @@ int SimulateManager::get_code_size(const address& addr, size_t& size) {
 }
 
 int SimulateManager::get_code_hash(const address& addr, bytes32& hash) {
+    LockGuard lock(&_code_mutex);
     auto p = _code_map.seek(addr);
     if (p == NULL) {
         if (get_code(addr) != 0) {
@@ -145,6 +161,7 @@ int SimulateManager::get_code_hash(const address& addr, bytes32& hash) {
 }
 
 int SimulateManager::copy_code(const address& addr, size_t code_offset, uint8_t* buffer_data, size_t buffer_size, size_t& out_size) {
+    LockGuard lock(&_code_mutex);
     auto p = _code_map.seek(addr);
     if (p == NULL) {
         if (get_code(addr) != 0) {
@@ -164,6 +181,7 @@ int SimulateManager::copy_code(const address& addr, size_t code_offset, uint8_t*
 }
 
 int SimulateManager::get_block_hash(int64_t block_number, bytes32& hash) {
+    LockGuard lock(&_block_hash_mutex);
     auto p = _block_hash.seek(block_number);
     if (p == 0) {
         ++_request_count;
@@ -180,6 +198,7 @@ int SimulateManager::get_block_hash(int64_t block_number, bytes32& hash) {
 }
 
 int SimulateManager::get_nonce(const address& addr, uint64_t& nonce) {
+    LockGuard lock(&_nonce_map_mutex);
     auto p = _nonce_map.seek(addr);
     if (p == 0) {
         ++_request_count;
@@ -209,7 +228,7 @@ evmc_message SimulateManager::build_message(std::shared_ptr<Transaction> tx, int
     const auto recipient = tx->to.value;
     _input = std::make_shared<Code>(tx->input._data.data(), tx->input._data.size());
     return {
-        tx->to.value == address(0) ? EVMC_CALL : EVMC_CREATE,
+        tx->to.value != address(0) ? EVMC_CALL : EVMC_CREATE,
         0,
         0,
         execution_gas_limit,
@@ -479,7 +498,7 @@ void SimulateManager::check_simulate() {
 }
 
 void* wrap_simulate_tx(void* arg) {
-    std::shared_ptr<Transaction> tx(Transaction*(arg));
+    std::shared_ptr<Transaction> tx(static_cast<Transaction*>(arg));
     SimulateManager::instance()->simulate_tx_impl(tx);
     return NULL;
 }

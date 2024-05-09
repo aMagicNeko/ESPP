@@ -8,7 +8,6 @@ DEFINE_int32(wait_timeout_ms, 5000, "max wait time in milliseconds");
 // avoid high-parallel error on write
 DEFINE_int32(write_wait_ms, 1000, "wait before wait time in us");
 DECLARE_bool(simulate_check);
-
 const int ID_CIRCLE_SHILFT = 12;
 const int INDEX_AND = ((1 << ID_CIRCLE_SHILFT) - 1);
 ClientBase::ClientBase() : _tx_detail_latency("tx_detail_latency"), _header_latency("header_latency") {
@@ -22,10 +21,12 @@ ClientBase::ClientBase() : _tx_detail_latency("tx_detail_latency"), _header_late
         _butex_vec[i] = bthread::butex_create_checked<std::atomic<uint32_t>>();
         _butex_vec[i]->store(0);
     }
+    _tx_send_timestamps.resize(1 << ID_CIRCLE_SHILFT, {0, ""});
+    _nonce_send_timestamps.resize(1 << ID_CIRCLE_SHILFT, {0, ""});
+    _raw_tx.resize(1 << ID_CIRCLE_SHILFT, "");
     _data_vec.resize(1 << ID_CIRCLE_SHILFT);
-    _tx_send_timestamps.resize(1 << ID_CIRCLE_SHILFT);
-    _nonce_send_timestamps.resize(1 << ID_CIRCLE_SHILFT);
     bthread_mutex_init(&_write_mutex, NULL);
+    bthread_mutex_init(&_block_info_mutex, NULL);
 }
 
 int ClientBase::stop() {
@@ -64,6 +65,7 @@ int ClientBase::get_butex(std::atomic<uint32_t>** butex, uint32_t id) {
     *butex = _butex_vec[id & ((1 << ID_CIRCLE_SHILFT) - 1)];
     if ((*butex)->load(std::memory_order_relaxed) != id) {
         butex = 0;
+        LOG(ERROR) << "to much pending request!";
         return OLD_REQUEST;
     }
     return 0;
@@ -94,6 +96,7 @@ int ClientBase::handle_headers(const json& j) {
         LOG(ERROR) << "parse number failed: " << j.dump();
         ret = PARSE_HEAD_NUMBER_ERROR;
     }
+    LockGuard lock(&_block_info_mutex);
     if (number != _block_info.number) {
         LOG(ERROR) << "head number not match: expected=" << _block_info.number << ", received=" << number;
         ret = HEAD_NUMBER_UNEPEXCED_ERROR;
@@ -154,7 +157,14 @@ int ClientBase::handle_transactions(const std::string& hash) {
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
     set_data(now_ms, id);
     _tx_send_timestamps[id & ((1 << ID_CIRCLE_SHILFT) - 1)] = {now_ms, hash};
-    //LOG(DEBUG) << "send eth_getTransactionByHash success";
+    // get raw tx
+    id = _id.fetch_add(1);
+    json json_data = {{"jsonrpc", "2.0"}, {"method", "eth_getRawTransactionByHash"}, {"params", {hash}}, {"id", id}};
+    _raw_tx[id & INDEX_AND] = hash;
+    if (write(j) != 0) {
+        LOG(ERROR) << "eth_getRawTransactionByHash failed";
+        return WRITE_GET_TRANSACTION_BY_HASH_ERROR;
+    }
     return 0;
 }
 
@@ -237,6 +247,7 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
                 ret = PARSE_TRANSACTION_MAX_PRIORITY_FEE_PER_GAS_ERROR;
                 break;
             }
+            LockGuard lock(&_block_info_mutex);
             if (max_gas_price > _block_info.base_fee) {
                 priority_fee = max_gas_price - _block_info.base_fee;
             }
@@ -337,6 +348,11 @@ void* ClientBase::run(void* param) {
             else if (client->_tx_send_timestamps[id & ((1 << ID_CIRCLE_SHILFT) - 1)].first != 0) {
                 // hash->tx response, add tx to tx_pool
                 failed = client->handle_transactions(json_data["result"], id);
+                continue;
+            }
+            else if (client->_raw_tx[id & INDEX_AND].size()) {
+                TxPool::instance()->add_raw_tx(client->_raw_tx[id & INDEX_AND], json_data["result"]);
+                client->_raw_tx[id & INDEX_AND] = "";
                 continue;
             }
             if (client->_nonce_send_timestamps[id & INDEX_AND].first != 0) {
