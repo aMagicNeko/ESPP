@@ -65,11 +65,12 @@ inline int request_storage(ClientBase* client, const Address& address, const Byt
         {"method", "eth_getStorageAt"},
         {"params", {
             address.to_string(),
-            "0x" + key.to_string(),
+            key.to_string(),
             "latest"
         }},
         {"id", 1}
     };
+    LOG(INFO) << "start to get storage:" << json_data.dump();
     if (block_number != 0) [[unlikely]] {
         json_data["params"][1] = "0x" + uint64_to_str(block_number);
     }
@@ -200,7 +201,7 @@ inline int request_tx_receipt(ClientBase* client, std::string hash, json& res) {
 }
 
 inline int request_nonce(ClientBase* client, const Address& addr, uint64_t& nonce, uint64_t block_number = 0) {
-    json json_data = {{"jsonrpc", "2.0"}, {"method", "eth_getTransactionCount"}, {"params", {"0x" + addr.to_string(), "latest"}}, {"id", 1}};
+    json json_data = {{"jsonrpc", "2.0"}, {"method", "eth_getTransactionCount"}, {"params", {addr.to_string(), "latest"}}, {"id", 1}};
     if (block_number != 0) [[unlikely]] {
         json_data["params"][0] = "0x" + uint64_to_str(block_number);
     }
@@ -258,12 +259,12 @@ inline int request_filter_logs(ClientBase* client, uint64_t start_block, uint64_
         };
         // every request include up to 1 topic
         json_data["params"][0]["topics"].push_back(topics[i].to_string());
-        LOG(INFO) << "start to get logs:" << json_data.dump();
+        //LOG(INFO) << "start to get logs:" << json_data.dump();
         if (client->write_and_wait(json_data) !=0) [[unlikely]] {
             LOG(ERROR) << "get_filter_logs failed";
             return -1;
         }
-        LOG(INFO) << "end to get logs:" << json_data.dump();
+        //LOG(INFO) << "end to get logs:" << json_data.dump();
         if (json_data.find("result") == json_data.end()) [[unlikely]] {
             LOG(ERROR) << "get logs failed" << json_data.dump();
             return -1;
@@ -297,12 +298,12 @@ inline int request_call(ClientBase* client, const Address& address, const std::s
         }},
         {"id", 1}
     };  
-    LOG(INFO) << "request_call:" << json_data.dump();
+    //LOG(INFO) << "request_call:" << json_data.dump();
     if (client->write_and_wait(json_data) != 0) [[unlikely]] {
         LOG(ERROR) << "request_call failed";
         return -1;
     }
-    LOG(INFO) << "request_call ret:" << json_data.dump();
+    //LOG(INFO) << "request_call ret:" << json_data.dump();
     if (parse_json(json_data, "result", data) != 0) [[unlikely]] {
         LOG(ERROR) << "eth_call failed: " << json_data.dump();
         return -1;
@@ -316,5 +317,29 @@ inline int request_call(ClientBase* client, const Address& address, const std::s
         return -1;
     }
     data = DBytes(data_str.substr(2));
+    return 0;
+}
+
+inline int request_tx_receipt(ClientBase* client, const std::string& hash, std::vector<LogEntry> logs) {
+    json json_data = {
+        {"jsonrpc", "2.0"},
+        {"method", "eth_call"},
+        {"params", {hash}},
+        {"id", 1}
+    }; 
+    if (client->write_and_wait(json_data) !=0) [[unlikely]] {
+        LOG(ERROR) << "get_filter_logs failed";
+        return -1;
+    }
+    for (auto &it : json_data["result"]["logs"]) {
+        if (it.find("removed") == it.end()) [[unlikely]] {
+            LOG(ERROR) << "get logs failed: " << json_data.dump();
+            return -1;
+        }
+        if (it["removed"]) [[unlikely]] {
+            continue;
+        }
+        logs.push_back(LogEntry(it));
+    }
     return 0;
 }

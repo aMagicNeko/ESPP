@@ -147,15 +147,24 @@ UniswapV2Pool::UniswapV2Pool(uint32_t token1_arg, uint32_t token2_arg, const Add
 int UniswapV2Pool::on_event(const LogEntry& log, bool pending) {
     LockGuard lock(&_mutex);
     if (!(log.topics[0] == s_log_topic) || log.data.size() != 32 * 2) [[unlikely]] {
-        LOG(ERROR) << "invalid swap data: " << log.data.to_string();
-        return -1;
+        //LOG(ERROR) << "invalid swap data: " << log.data.to_string();
+        return -1; // no need to update
     }
     LOG(INFO) << "matched uniswapV2 log, pool:" << log.address.to_string();
     uint256_t amount0 = log.data.to_uint256(0, 32);
     uint256_t amount1 = log.data.to_uint256(32, 64);
+    int ret = 0;
+    if (pending) {
+        if (amount0 / amount1 > _reserve0 / _reserve1) {
+            ret = 1; // tx process zero for one swap
+        }
+        else {
+            ret = 0;
+        }
+    }
     _reserve0 = amount0.convert_to<uint128_t>();
     _reserve1 = amount1.convert_to<uint128_t>();
-    return 0;
+    return ret;
 }
 
 void UniswapV2Pool::save_to_file(std::ofstream& file) {
@@ -184,40 +193,76 @@ inline uint256_t upround_div(uint256_t x, uint256_t y) {
     return x % y ? (x / y + 1) : x / y;
 }
 
+const uint256_t MAX_TOKEN_NUM = (uint256_t(1) << 112);
+
 uint256_t UniswapV2Pool::compute_output(uint256_t in, bool direction) const {
+    if (in >= MAX_TOKEN_NUM) {
+        return 0;
+    }
+    uint256_t out = 0;
     if (direction) {
         uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
+        //LOG(DEBUG) << "reserve0:" << _reserve0 << " reserve1:" << _reserve1 << "liq:" << liq;
         uint256_t real_in = (1000 - 3) * uint256_t(in);
+        //LOG(DEBUG) << "real_in:" << real_in;
         uint256_t numof_token0_after_swap = uint256_t(1000) * _reserve0 + real_in;
+        //LOG(DEBUG) << "numof_token0_after_swap:" << numof_token0_after_swap;
         uint256_t numof_token1_after_swap = upround_div(liq, numof_token0_after_swap);
-        return ((numof_token1_after_swap - uint256_t(1000) * _reserve1) / 1000);
+        //LOG(DEBUG) << "numof_token1_after_swap:" << numof_token1_after_swap;
+        out = ((uint256_t(1000) * _reserve1 - numof_token1_after_swap) / 1000);
     }
     else {
         uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
+        //LOG(DEBUG) << "reserve0:" << _reserve0 << " reserve1:" << _reserve1 << "liq:" << liq;
         uint256_t real_in = (1000 - 3) * uint256_t(in);
+        //LOG(DEBUG) << "real_in:" << real_in;
         uint256_t numof_token1_after_swap = uint256_t(1000) * _reserve1 + real_in;
+        //LOG(DEBUG) << "numof_token1_after_swap:" << numof_token1_after_swap;
         uint256_t numof_token0_after_swap = upround_div(liq, numof_token1_after_swap);
-        return ((numof_token0_after_swap - uint256_t(1000) * _reserve0) / 1000);
+        //LOG(DEBUG) << "numof_token0_after_swap:" << numof_token0_after_swap;
+        out = ((uint256_t(1000) * _reserve0 - numof_token0_after_swap) / 1000);
     }
+    LOG(DEBUG) << "compute_output in:" << in << " out:" << out;
+    return out;
 }
 
 uint256_t UniswapV2Pool::compute_input(uint256_t out, bool direction) const {
+    if (out >= MAX_TOKEN_NUM) {
+        return MAX_TOKEN_NUM + 1;
+    }
+    uint256_t in = 0;
     if (direction) {
+        if (_reserve1 <= out) {
+            return std::numeric_limits<uint128_t>::max();
+        }
         uint256_t liq = 1000000 * _reserve0 * _reserve1;
         uint256_t numof_token1_after_swap = uint256_t(1000) * (_reserve1 - out);
         uint256_t numof_token0_after_swap = upround_div(liq, numof_token1_after_swap);
-        return upround_div(numof_token0_after_swap - uint256_t(1000) * _reserve0, uint256_t(1000 - 3));
+        //LOG(DEBUG) << "liq:" << liq << " numof_token1_after_swap:" << numof_token1_after_swap << " numof_token0_after_swap:" << numof_token0_after_swap;
+        in = upround_div(numof_token0_after_swap - uint256_t(1000) * _reserve0, uint256_t(1000 - 3));
     }
     else {
+        if (_reserve0 <= out) {
+            return std::numeric_limits<uint128_t>::max();
+        }
         uint256_t liq = 1000000 * _reserve0 * _reserve1;
         uint256_t numof_token0_after_swap = uint256_t(1000) * (_reserve0 - out);
         uint256_t numof_token1_after_swap = upround_div(liq, numof_token0_after_swap);
-        return upround_div(numof_token1_after_swap - uint256_t(1000) * _reserve1, uint256_t(1000 - 3));
+        //LOG(DEBUG) << "liq:" << liq << " numof_token0_after_swap:" << numof_token0_after_swap << " numof_token1_after_swap:" << numof_token1_after_swap;
+        in = upround_div(numof_token1_after_swap - uint256_t(1000) * _reserve1, uint256_t(1000 - 3));
     }
+    LOG(DEBUG) << "compute_input out:" << out << " int:" << in;
+    return in;
 }
 
 uint256_t UniswapV2Pool::process_swap(uint256_t in, bool direction) {
+    if (in == 0 || _reserve0 == 0 || _reserve1 == 0) {
+        return 0;
+    }
     uint256_t out = compute_output(in, direction);
+    if (in >= MAX_TOKEN_NUM || out >= MAX_TOKEN_NUM) {
+        return 0;
+    }
     uint128_t new_reserve0 = 0;
     uint128_t new_reserve1 = 0;
     if (direction) {
@@ -234,6 +279,7 @@ uint256_t UniswapV2Pool::process_swap(uint256_t in, bool direction) {
     }
     _reserve0 = new_reserve0;
     _reserve1 = new_reserve1;
+    LOG(INFO) << "swap in:" << in << " out:" << out;
     return out;
 }
 

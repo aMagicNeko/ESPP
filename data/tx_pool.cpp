@@ -148,10 +148,10 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
         // update account tx
         update_txs(account, tx->nonce);
     }
-    if (FLAGS_simulate_based_on_all_prev_tx) {
+    if (FLAGS_simulate_based_on_all_prev_tx) [[unlikely]] {
         evmc::SimulateManager::instance()->notice_change(change_idx);
     }
-    else {
+    else [[likely]] {
         evmc::SimulateManager::instance()->notice_tx(tx);
     }
 }

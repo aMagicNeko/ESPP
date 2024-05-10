@@ -24,7 +24,8 @@ int main (int argc, char **argv) {
         //bthread_t bid;
         //bthread_start_urgent(&bid, NULL, test, (void*)(&ws));
         TxPool::instance()->init(&ws);
-        PoolManager::instance()->init(&ws);
+        PoolManager::instance()->init();
+        evmc::SimulateManager::instance()->start(&ws);
         //bthread_join(bid, NULL);
         ws.subscribe_headers();
         ws.subscribe_transactions();
@@ -41,7 +42,7 @@ int main (int argc, char **argv) {
     //bthread_t bid;
     //bthread_start_urgent(&bid, NULL, test, (void*)(&ws));
     TxPool::instance()->init(&ws);
-    PoolManager::instance()->init(&ws);
+    PoolManager::instance()->init();
     //bthread_join(bid, NULL);
     ws.subscribe_headers();
     ws.subscribe_transactions();

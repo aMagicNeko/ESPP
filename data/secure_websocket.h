@@ -10,6 +10,7 @@ class SecureWebsocket : public ClientBase {
 public:
     SecureWebsocket() : _ctx(asio::ssl::context::sslv23_client), _tcp_socket(_io_context),
             _ssl_socket(_tcp_socket, _ctx), _ws(_ssl_socket) {}
+    virtual ~SecureWebsocket() {}
 
     int connect(const std::string &host, const std::string &port, const std::string &path);
     

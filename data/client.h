@@ -10,6 +10,7 @@ struct BlockInfo {
 class ClientBase {
 public:
     ClientBase();
+    virtual ~ClientBase();
     int write(const json &param);
     int start_listen();
     int stop();

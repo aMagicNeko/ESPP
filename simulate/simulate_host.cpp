@@ -363,7 +363,9 @@ evmc::Result SimulateHost::execute_message(const evmc_message& msg) noexcept
         update_balance(msg.recipient, msg.value);
     }
     std::shared_ptr<Code> code;
-    SimulateManager::instance()->get_code(msg.code_address, &code);
+    if (SimulateManager::instance()->get_code(msg.code_address, &code)) {
+        return evmc::Result();
+    }
     //LOG(INFO) << "msg:" << evmc_message_to_string(msg);
     //LOG(INFO) << "code:" << code->to_string();
     return _vm->execute(*this, _rev, msg, code->data(), code->size());

@@ -26,7 +26,7 @@ int main (int argc, char **argv) {
     usleep(1000);
     TxPool::instance()->init(&client);
     evmc::SimulateManager::instance()->start(&client);
-    PoolManager::instance()->init(&client);
+    PoolManager::instance()->init();
     client.subscribe_headers();
     client.subscribe_transactions();
     while (1) {

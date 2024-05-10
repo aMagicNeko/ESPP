@@ -56,7 +56,6 @@ public:
     int on_head();
     // get pending tx by its order in the pool, x is used to notice if no new tx is here
     int get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<uint32_t>* x = NULL);
-    void notice_simulate_result(size_t index, const std::vector<LogEntry>& logs);
     void add_simulate_tx(std::shared_ptr<Transaction> tx);
     void add_raw_tx(const std::string& hash, const std::string& raw_tx);
 private:

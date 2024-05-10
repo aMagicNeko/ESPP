@@ -20,19 +20,28 @@ int IpcClient::connect(const std::string &address) {
 }
 
 int IpcClient::read(json &out) {
-    std::string message;
-    char buffer[4096];
-    ssize_t n;
-    while ((n = ::recv(_client_fd, buffer, sizeof(buffer), 0)) > 0) {
-        message.append(buffer, n);
+    char ch;
+    std::string line;
+    while (true) {
+        ssize_t n = recv(_client_fd, &ch, 1, 0);
+        if (n > 0) {
+            if (ch == '\n') {
+                break;
+            }
+            line += ch;
+        } else if (n == 0) {
+            break;
+        } else {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                continue;
+            } else {
+                LOG(ERROR) << "recv error";
+            }
+        }
     }
-    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-        LOG(ERROR) << "read failed";
-        return -1;
-    }
-    if (!message.empty()) {
+    if (!line.empty()) {
         try {
-            out = json::parse(message);
+            out = json::parse(line);
         } catch (const json::parse_error& e) {
             LOG(ERROR) << "JSON parse error: " << e.what();
             return -1;

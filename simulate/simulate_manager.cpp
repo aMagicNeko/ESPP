@@ -305,11 +305,11 @@ void SimulateManager::simulate_tx_impl(std::shared_ptr<Transaction> tx, int inde
     };
     bthread_mutex_unlock(&_mutex);
     SimulateHost* prev = 0;
-    if (index != 0) {
+    if (index != 0 && FLAGS_simulate_based_on_all_prev_tx) [[unlikely]] {
         prev = _hosts[index - 1].get();
     }
     auto host = std::make_shared<SimulateHost>(_vm, prev, tx->from, tx->nonce, context);
-    if (FLAGS_simulate_based_on_all_prev_tx) {
+    if (FLAGS_simulate_based_on_all_prev_tx) [[unlikely]] {
         if (_hosts.size() <= index) {
             _hosts.push_back(host);
         }

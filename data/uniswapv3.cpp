@@ -291,9 +291,10 @@ UniswapV3Pool::UniswapV3Pool(uint32_t token1_arg, uint32_t token2_arg, const Add
 
 int UniswapV3Pool::on_event(const LogEntry& log, bool pending) {
     if (pending) {
+        /*
         if (log.topics[0] == s_mint_head) {
-            int tick_upper = Int<256>::decode(log.topics[2].to_string()).convert_to<int>();
-            int tick_lower = Int<256>::decode(log.topics[3].to_string()).convert_to<int>();
+            int tick_upper = Int<256>::decode(log.topics[2].to_string().substr(2)).convert_to<int>();
+            int tick_lower = Int<256>::decode(log.topics[3].to_string().substr(2)).convert_to<int>();
             uint128_t amount = log.data.to_uint256(32, 64).convert_to<uint128_t>();
             int word_pos = get_word_pos(tick, tick_space);
             int min_tick = ((word_pos - 1) << 8) * tick_space;
@@ -308,8 +309,8 @@ int UniswapV3Pool::on_event(const LogEntry& log, bool pending) {
             }
         }
         else if (log.topics[0] == s_burn_head) {
-            int tick_upper = Int<256>::decode(log.topics[2].to_string()).convert_to<int>();
-            int tick_lower = Int<256>::decode(log.topics[3].to_string()).convert_to<int>();
+            int tick_upper = Int<256>::decode(log.topics[2].to_string().substr(2)).convert_to<int>();
+            int tick_lower = Int<256>::decode(log.topics[3].to_string().substr(2)).convert_to<int>();
             uint128_t amount = log.data.to_uint256(32, 64).convert_to<uint128_t>();
             int word_pos = get_word_pos(tick, tick_space);
             int min_tick = ((word_pos - 1) << 8) * tick_space;
@@ -323,10 +324,26 @@ int UniswapV3Pool::on_event(const LogEntry& log, bool pending) {
                 liquidity -= amount;
             }
         }
-        else if (log.topics[0] == s_swap_head) {
+        */
+        // we only arb on swap log
+        if (log.topics[0] == s_swap_head) {
+            uint256_t prev_price = sqrt_price;
+            sqrt_price = log.data.to_uint256(64, 96);
             liquidity = log.data.to_uint256(96, 128).convert_to<uint128_t>();
             tick = log.data.to_int256(128, 160).convert_to<int>();
-            assert(Int<256>::decode(log.data.to_string().substr(256)) == tick);
+            //LOG(INFO) << log.data.to_string().substr(256);
+            //LOG(INFO) << Int<256>::decode(log.data.to_string().substr(2).substr(256));
+            assert(Int<256>::decode(log.data.to_string().substr(2).substr(256)) == tick);
+            LOG(DEBUG) << "pending: sqrt_price:" << sqrt_price << " liquidity:" << liquidity;
+            if (prev_price > sqrt_price) {
+                return 1; // tx process zero for one swap
+            }
+            else {
+                return 0;
+            }
+        }
+        else {
+            return -1; // no need to update
         }
     }
     else {
@@ -422,7 +439,7 @@ uint256_t getAmount0Delta(uint256_t sqrtRatioAX96, uint256_t sqrtRatioBX96, uint
 
     uint256_t numerator1 = uint256_t(liquidity) << FixedPoint96_RESOLUTION;
     uint256_t numerator2 = sqrtRatioBX96 - sqrtRatioAX96;
-    if (sqrtRatioAX96) {
+    if (!sqrtRatioAX96) {
         LOG(ERROR) << "sqrtRatioAX96 = 0";
         return 0;
     }
@@ -538,13 +555,24 @@ uint256_t UniswapV3Pool::get_output_boundary(uint256_t max_in, bool direction) c
     }
     uint256_t out = 0;
     if (direction) {
-        auto p = --liquidity_net.lower_bound(tick);
+        auto p = liquidity_net.lower_bound(tick);
+        if (p == liquidity_net.begin()) {
+            // out of sentinel
+            // not gotten tick
+            return 0;
+        }
+        --p;
         int next_tick = p->first;
         uint256_t next_sqrt_price = getSqrtRatioAtTick(next_tick);
         out = getAmount1Delta(next_sqrt_price, sqrt_price, liquidity, true);
     }
     else {
         auto p = liquidity_net.upper_bound(tick);
+        if (p == liquidity_net.end()) {
+            // out of sentinel
+            // not gotten tick
+            return 0;
+        }
         int next_tick = p->first;
         uint256_t next_sqrt_price = getSqrtRatioAtTick(next_tick);
         out = getAmount0Delta(next_sqrt_price, sqrt_price, liquidity, true);
@@ -560,7 +588,7 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
     uint256_t out = 0;
     uint128_t cur_liquidity = liquidity;
     if (direction) {
-        while (true) {
+        while (in) {
             auto p = liquidity_net.lower_bound(tick_cur);
             if (p == liquidity_net.begin()) {
                 // out of sentinel
@@ -605,7 +633,7 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
         }
     }
     else {
-        while (true) {
+        while (in) {
             auto p = liquidity_net.upper_bound(tick_cur);
             if (p == liquidity_net.end()) {
                 // out of sentinel
@@ -642,6 +670,7 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
             cur_liquidity = tmp1.convert_to<uint128_t>();
         }
     }
+    return out;
 }
 
 
@@ -658,7 +687,7 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
     uint256_t in = 0;
     uint128_t cur_liquidity = liquidity;
     if (direction) {
-        while (true) {
+        while (out) {
             auto p = liquidity_net.lower_bound(tick_cur);
             if (p == liquidity_net.begin()) {
                 // out of sentinel
@@ -677,6 +706,7 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
                 return upround_div(tmp, 1000000 - fee);
             }
             in += getAmount0Delta(cur_ratiao, next_ratio, cur_liquidity, true);
+            assert(out >= step_amount);
             out -= step_amount;
             tick_cur = next_tick;
             int256_t tmp = cur_liquidity.convert_to<int256_t>() - p->second;
@@ -688,7 +718,7 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
         }
     }
     else {
-         while (true) {
+         while (out) {
             auto p = liquidity_net.upper_bound(tick_cur);
             if (p == liquidity_net.end()) {
                 // out of sentinel
@@ -706,6 +736,7 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
                 return upround_div(tmp, 1000000 - fee);
             }
             in += getAmount1Delta(cur_ratiao, next_ratio, cur_liquidity, true);
+            assert(out >= step_amount);
             out -= step_amount;
             tick_cur += tick_space;
             tick_cur = next_tick;
@@ -717,6 +748,7 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
             cur_liquidity = tmp.convert_to<uint128_t>();
         }
     }
+    return in;
 }
 
 uint256_t UniswapV3Pool::process_swap(uint256_t in, bool direction) {

@@ -2,10 +2,15 @@
 #include "data/request.h"
 #include "data/error.h"
 #include <filesystem>
+#include "simulate/prev_logs.h"
+#include "data/secure_websocket.h"
+DECLARE_bool(check_simulate_result);
 DECLARE_int32(uniswapv3_half_tick_count);
 DECLARE_int32(long_request_failed_limit);
 DEFINE_int32(logs_step, 10, "requst_logs max block step");
-
+DECLARE_string(host);
+DECLARE_string(port);
+DECLARE_string(path);
 // ensure only one thread is processing and for memory fence
 static std::atomic<int> s_update_pools_wrap_status;
 
@@ -89,8 +94,13 @@ void PoolManager::load_from_file() {
 }
 const Address WETH_ADDR("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
 
-int PoolManager::init(ClientBase* client) {
-    _client = client;
+int PoolManager::init() {
+    _client = new SecureWebsocket;
+    if (_client->connect(FLAGS_host, FLAGS_port, FLAGS_path) != 0) {
+        return -1;
+    }
+    _client->start_listen();
+    usleep(1000);
     _tokens_index.init(1);
     _pools_address_map.init(1);
     add_token(WETH_ADDR);
@@ -98,27 +108,27 @@ int PoolManager::init(ClientBase* client) {
         load_from_file();
     } else {
         uint64_t block_number = 0;
-        if (request_block_number(client, block_number) != 0) {
+        if (request_block_number(_client, block_number) != 0) {
             LOG(ERROR) << "get block number failed";
             return -1;
         }
         // init uniswapV2
         std::vector<Address> pools;
-        if (UniswapV2Pool::get_pools(client, pools) != 0) {
+        if (UniswapV2Pool::get_pools(_client, pools) != 0) {
             LOG(ERROR) << "get uniswapv2 pools failed";
             return -1;
         }
-        if (UniswapV2Pool::get_data(client, block_number, pools) != 0) {
+        if (UniswapV2Pool::get_data(_client, block_number, pools) != 0) {
             LOG(ERROR) << "get uniswapv2 data failed";
             return -1;
         }
         // init uniswapV3
         std::vector<UniswapV3Pool*> v3pools;
-        if (UniswapV3Pool::get_pools(client, v3pools) != 0) {
+        if (UniswapV3Pool::get_pools(_client, v3pools) != 0) {
             LOG(ERROR) << "get uniswapv3 pools failed";
             return -1;
         }
-        if (UniswapV3Pool::get_data(client, block_number, v3pools) != 0) {
+        if (UniswapV3Pool::get_data(_client, block_number, v3pools) != 0) {
             LOG(ERROR) << "get uniswapv3 data failed";
             return -1;
         }
@@ -205,6 +215,9 @@ int PoolManager::update_pools() {
             continue;
         }
         if (_trace_block == cur_block) {
+            if (FLAGS_check_simulate_result) [[unlikely]] {
+                PrevLogs::instance()->on_head(_client);
+            }
             return 0;
         }
         uint32_t next = _trace_block + FLAGS_logs_step;
@@ -265,9 +278,11 @@ void* update_pools_wrap(void* arg) {
     if (PoolManager::instance()->check_parent(*p) != 0) {
         LOG(WARNING) << "block reorg!";
     }
-    if (PoolManager::instance()->update_pools() != 0) {
+    while (PoolManager::instance()->update_pools() != 0) {
         LOG(INFO) << "update pools failed";
-        abort();
+        if (PoolManager::instance()->reset_connection() == 0) {
+            continue;
+        }
         delete p;
         // for memory fence
         s_update_pools_wrap_status.fetch_sub(1, std::memory_order_release);
@@ -305,4 +320,16 @@ uint256_t PoolManager::token_to_eth(uint32_t token_index, uint256_t input, uint3
         }
     }
     return max_ret;
+}
+
+int PoolManager::reset_connection() {
+    _client->stop();
+    delete _client;
+    _client = new SecureWebsocket;
+    if (_client->connect(FLAGS_host, FLAGS_port, FLAGS_path) != 0) {
+        return -1;
+    }
+    _client->start_listen();
+    usleep(1000);
+    return 0;
 }

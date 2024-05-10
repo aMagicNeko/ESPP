@@ -8,7 +8,7 @@ DEFINE_int32(wait_timeout_ms, 5000, "max wait time in milliseconds");
 // avoid high-parallel error on write
 DEFINE_int32(write_wait_ms, 1000, "wait before wait time in us");
 DECLARE_bool(simulate_check);
-const int ID_CIRCLE_SHILFT = 12;
+const int ID_CIRCLE_SHILFT = 15;
 const int INDEX_AND = ((1 << ID_CIRCLE_SHILFT) - 1);
 ClientBase::ClientBase() : _tx_detail_latency("tx_detail_latency"), _header_latency("header_latency") {
     _client_fd = 0;
@@ -27,6 +27,11 @@ ClientBase::ClientBase() : _tx_detail_latency("tx_detail_latency"), _header_late
     _data_vec.resize(1 << ID_CIRCLE_SHILFT);
     bthread_mutex_init(&_write_mutex, NULL);
     bthread_mutex_init(&_block_info_mutex, NULL);
+}
+
+ClientBase::~ClientBase() {
+    bthread_mutex_destroy(&_write_mutex);
+    bthread_mutex_destroy(&_block_info_mutex);
 }
 
 int ClientBase::stop() {
@@ -147,7 +152,7 @@ int ClientBase::handle_headers(const json& j) {
 }
 
 int ClientBase::handle_transactions(const std::string& hash) {
-    uint32_t id = _id.fetch_add(1);
+    uint32_t id = _id.fetch_add(1, std::memory_order_relaxed);
     json j{{"jsonrpc", "2.0"}, {"method", "eth_getTransactionByHash"}, {"params", {hash}}, {"id", id}};
     if (write(j) != 0) {
         LOG(ERROR) << "eth_getTransactionByHash failed";
@@ -156,12 +161,12 @@ int ClientBase::handle_transactions(const std::string& hash) {
     auto now = std::chrono::system_clock::now().time_since_epoch();
     auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
     set_data(now_ms, id);
-    _tx_send_timestamps[id & ((1 << ID_CIRCLE_SHILFT) - 1)] = {now_ms, hash};
+    _tx_send_timestamps[id & INDEX_AND] = {now_ms, hash};
     // get raw tx
-    id = _id.fetch_add(1);
+    id = _id.fetch_add(1, std::memory_order_relaxed);
     json json_data = {{"jsonrpc", "2.0"}, {"method", "eth_getRawTransactionByHash"}, {"params", {hash}}, {"id", id}};
     _raw_tx[id & INDEX_AND] = hash;
-    if (write(j) != 0) {
+    if (write(json_data) != 0) {
         LOG(ERROR) << "eth_getRawTransactionByHash failed";
         return WRITE_GET_TRANSACTION_BY_HASH_ERROR;
     }
@@ -345,12 +350,13 @@ void* ClientBase::run(void* param) {
             if (id == 0) {
                 failed = REQUEST_ERROR;
             }
-            else if (client->_tx_send_timestamps[id & ((1 << ID_CIRCLE_SHILFT) - 1)].first != 0) {
+            else if (client->_tx_send_timestamps[id & INDEX_AND].first != 0) {
                 // hash->tx response, add tx to tx_pool
                 failed = client->handle_transactions(json_data["result"], id);
                 continue;
             }
             else if (client->_raw_tx[id & INDEX_AND].size()) {
+                LOG(DEBUG) << "raw_tx:" << json_data;
                 TxPool::instance()->add_raw_tx(client->_raw_tx[id & INDEX_AND], json_data["result"]);
                 client->_raw_tx[id & INDEX_AND] = "";
                 continue;

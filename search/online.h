@@ -10,6 +10,11 @@ public:
         _pools.init(1);
         _pools_address_map.init(1);
     }
+    ~OnlineSearch() {
+        for (auto p:_pools) {
+            delete p.second;
+        }
+    }
     void search(std::shared_ptr<Transaction> tx, const std::vector<LogEntry>& logs);
     void dfs(uint32_t start_token, butil::FlatSet<uint32_t>& visited_set, uint32_t cur_token, uint32_t len,
             std::vector<uint32_t>& path, std::vector<bool>& direction);
@@ -23,4 +28,6 @@ private:
     butil::FlatMap<uint32_t, PoolBase*> _pools;
     butil::FlatMap<Address, uint32_t, std::hash<Address>> _pools_address_map;
     std::shared_ptr<Transaction> _tx;
+    int _compute_path_cnt = 0;
+    butil::FlatMap<uint32_t, int> _pool_direction;
 };
