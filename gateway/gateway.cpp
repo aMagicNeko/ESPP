@@ -14,6 +14,10 @@ void* sent_bundle_wrap(void* args) {
     return NULL;
 }
 
+int GateWay::init(ClientBase* client) {
+    return _bundle_client.init(client);
+}
+
 void GateWay::notice_search_offline_result(const SearchResult& result) {
     uint256_t profit = result.eth_out;
     if (profit > _profit) {
