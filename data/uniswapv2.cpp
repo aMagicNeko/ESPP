@@ -266,12 +266,14 @@ uint256_t UniswapV2Pool::process_swap(uint256_t in, bool direction) {
     uint128_t new_reserve0 = 0;
     uint128_t new_reserve1 = 0;
     if (direction) {
+        assert(uint256_t(in) + _reserve0 < (uint256_t(1) << 128));
         new_reserve0 = in.convert_to<uint128_t>() + _reserve0;
         assert(out < _reserve1);
         new_reserve1 = _reserve1 - out.convert_to<uint128_t>();
         assert(uint256_t(new_reserve0) * new_reserve1 >= uint256_t(_reserve0) * _reserve1);
     }
     else {
+        assert(uint256_t(in) + _reserve1 < (uint256_t(1) << 128));
         new_reserve1 = in.convert_to<uint128_t>() + _reserve1;
         assert(out < _reserve0);
         new_reserve0 = _reserve0 - out.convert_to<uint128_t>();

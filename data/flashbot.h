@@ -3,7 +3,7 @@
 #include <brpc/controller.h>
 #include <brpc/channel.h>
 #include "data/client.h"
-class FlashBotClient : public Singleton<FlashBotClient> {
+class FlashBotClient {
 public:
     int init(ClientBase* client);
     int send_bundles(const std::vector<std::string>& raw_txs, std::string& uid);

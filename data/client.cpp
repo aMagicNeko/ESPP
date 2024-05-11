@@ -392,6 +392,7 @@ void* ClientBase::run(void* param) {
             LOG(WARNING) << "unknown data type: " << json_data.dump().c_str();
         }
     }
+    delete client;
     return NULL;
 }
 

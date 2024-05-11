@@ -18,17 +18,17 @@ int main (int argc, char **argv) {
     }
     LOG(INFO) << "set gflags from file: " << google::SetCommandLineOption("flagfile", argv[1]);
     
-    IpcClient client;
-    if (client.connect(FLAGS_ipc_url) != 0) {
+    auto client = new IpcClient;
+    if (client->connect(FLAGS_ipc_url) != 0) {
         return 0;
     }
-    client.start_listen();
+    client->start_listen();
     usleep(1000);
-    TxPool::instance()->init(&client);
-    evmc::SimulateManager::instance()->start(&client);
+    TxPool::instance()->init(client);
+    evmc::SimulateManager::instance()->start(client);
     PoolManager::instance()->init();
-    client.subscribe_headers();
-    client.subscribe_transactions();
+    client->subscribe_headers();
+    client->subscribe_transactions();
     while (1) {
         sleep(1);
     }

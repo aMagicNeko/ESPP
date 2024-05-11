@@ -1,3 +1,4 @@
+/*
 #include "search/offline.h"
 #include "search/pool_manager.h"
 #include "search/analytical_solution.h"
@@ -81,12 +82,12 @@ SearchResult compute_impl(const std::vector<PoolBase*>& path, const std::vector<
     uint256_t max = 0;
     uint256_t res_in = 0;
     LOG(DEBUG) << "-------------compute start";
+    for (uint32_t i = 0; i < path.size(); ++i) {
+        LOG(DEBUG) << "tick: " << path[i]->get_tick() << " liquidity:" << path[i]->get_liquidit();
+    }
     while (true) {
-        LOG(INFO) << "------round start";
+        LOG(DEBUG) << "------round start";
         uint256_t cur_boundary = MAX_TOKEN_NUM - 1;
-        //for (uint32_t i = 0; i < path.size(); ++i) {
-        //    LOG(INFO) << "tick: " << path[i]->get_tick() << " liquidity:" << path[i]->get_liquidit();
-        //}
         for (uint32_t i = 0; i < path.size(); ++i) {
             cur_boundary = path[i]->get_output_boundary(cur_boundary, direction[i]);
             if (cur_boundary == 0) {
@@ -108,6 +109,7 @@ SearchResult compute_impl(const std::vector<PoolBase*>& path, const std::vector<
             break;
         }
         uint256_t token_in = get_analytical_solution(path, direction, cur_boundary);
+        LOG(DEBUG) << "analytical_solution out:" << token_in;
         if (token_in > cur_boundary) {
             token_in = cur_boundary;
         }
@@ -115,7 +117,7 @@ SearchResult compute_impl(const std::vector<PoolBase*>& path, const std::vector<
         for (uint32_t i = 0; i < path.size(); ++i) {
             token_out = path[i]->compute_output(token_out, direction[i]);
         }
-        LOG(INFO) << "token in:" << token_in + accumulate_input << " token_out:" << token_out + accumulate_output;
+        LOG(DEBUG) << "token in:" << token_in + accumulate_input << " token_out:" << token_out + accumulate_output;
         uint256_t tmp = token_out + accumulate_output - token_in - accumulate_input;
         if (tmp > max) {
             max = tmp;
@@ -151,3 +153,5 @@ void OfflineSearch::compute(const std::vector<uint32_t>& path, const std::vector
 }
 
 
+
+*/

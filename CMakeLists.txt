@@ -22,6 +22,8 @@ find_package(cryptopp REQUIRED)
 find_package(evmc REQUIRED)
 find_package(Boost REQUIRED COMPONENTS filesystem)
 find_package(leveldb REQUIRED)
+find_library(PROFILER_LIBRARY NAMES profiler)
+find_library(TCMALLOC_LIBRARY NAMES tcmalloc)
 
 set(SECP256K1_LIBRARY "/usr/local/lib/libsecp256k1.a")
 
@@ -29,7 +31,7 @@ find_library(SCRYPT_LIBRARY scrypt)
 
 include_directories(${CMAKE_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/util/Aleth)
-set(MY_LIBS cryptopp evmone brpc gflags OpenSSL::SSL OpenSSL::Crypto Boost::system Boost::filesystem protobuf::libprotobuf protobuf::libprotoc protobuf::libprotobuf-lite ZLIB::ZLIB leveldb ${SECP256K1_LIBRARY} ${SCRYPT_LIBRARY})
+set(MY_LIBS cryptopp evmone brpc gflags OpenSSL::SSL OpenSSL::Crypto Boost::system Boost::filesystem protobuf::libprotobuf protobuf::libprotoc protobuf::libprotobuf-lite ZLIB::ZLIB leveldb ${SECP256K1_LIBRARY} ${SCRYPT_LIBRARY} ${PROFILER_LIBRARY} ${TCMALLOC_LIBRARY})
 
 link_libraries(pthread rt)
 

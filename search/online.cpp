@@ -2,8 +2,10 @@
 #include "search/pool_manager.h"
 #include "gateway/gateway.h"
 #include "simulate/prev_logs.h"
+#include "search/analytical_solution.h"
 DEFINE_int32(online_search_max_length, 4, "max path length of online search");
 DEFINE_bool(check_simulate_result, false, "whether to check logs of simulate");
+const static uint256_t MIN_LIQUIDITY = 10000000000000;
 static std::atomic<int> only_one_search(0);
 void OnlineSearch::search(std::shared_ptr<Transaction> tx, const std::vector<LogEntry>& logs) {
     _tx = tx;
@@ -12,144 +14,190 @@ void OnlineSearch::search(std::shared_ptr<Transaction> tx, const std::vector<Log
         if (!_pools_address_map.seek(log.address)) {
             auto p = PoolManager::instance()->_pools_address_map.seek(log.address);
             if (p) {
-                uint32_t i = *p;
-                PoolBase* pool = PoolManager::instance()->_pools[i]->get_copy();
+                PoolBase* pool = (*p)->get_copy();
                 int d = 0;
                 if ((d = pool->on_event(log, true)) < 0) {
                     // not change reserve
                     delete pool;
+                    continue;
+                }
+                _pool_direction.insert({pool, !d});
+                _pools_address_map.insert(log.address, pool);
+                uint32_t token1 = pool->token1;
+                uint32_t token2 = pool->token2;
+                if (!d) {
+                    auto pp = _pools_map.seek(token1);
+                    if (pp == 0) {
+                        pp = _pools_map.insert(token1, std::set<PoolBase*, PoolCmp>());
+                    }
+                    pp->insert(pool);
                 }
                 else {
-                    _pool_direction.insert({i, !d});
-                    _pools_address_map.insert(log.address, i);
-                    uint32_t token1 = pool->token1;
-                    uint32_t token2 = pool->token2;
-                    _pools[i] = pool;
-                    if (!d) {
-                        auto pp = _pools_map.seek(token1);
-                        if (pp == 0) {
-                            pp = _pools_map.insert(token1, butil::FlatMap<uint32_t, std::vector<uint32_t>>());
-                            pp->init(1);
-                        }
-                        auto ppp = pp->seek(token2);
-                        if (ppp == 0) {
-                            ppp = pp->insert(token2, std::vector<uint32_t>());
-                        }
-                        ppp->push_back(i);
+                    auto pp = _pools_reverse_map.seek(token2);
+                    if (pp == 0) {
+                        pp = _pools_reverse_map.insert(token2, std::set<PoolBase*, PoolReverseCmp>());
                     }
-                    else {
-                        auto pp = _pools_reverse_map.seek(token2);
-                        if (pp == 0) {
-                            pp = _pools_reverse_map.insert(token2, butil::FlatMap<uint32_t, std::vector<uint32_t>>());
-                            pp->init(1);
-                        }
-                        auto ppp = pp->seek(token1);
-                        if (ppp == 0) {
-                            ppp = pp->insert(token1, std::vector<uint32_t>());
-                        }
-                        ppp->push_back(i);
-                    }
-                    if (FLAGS_check_simulate_result) [[unlikely]] {
-                        PrevLogs::instance()->add_log(tx->hash, log);
-                    }
+                    pp->insert(pool);
+                }
+                if (FLAGS_check_simulate_result) [[unlikely]] {
+                    PrevLogs::instance()->add_log(tx->hash, log);
                 }
             }
         }
         else {
-            _pools[_pools_address_map[log.address]]->on_event(log, 1);
+            _pools_address_map[log.address]->on_event(log, true);
         }
     }
-    if (_pools.size()) {
+    if (_pools_address_map.size()) {
         if (only_one_search.fetch_add(1) != 0)
             return;
     }
     for (auto item : _pool_direction) {
-        std::vector<uint32_t> path;
-        path.push_back(item.first);
-        butil::FlatSet<uint32_t> visited_set;
-        visited_set.init(1);
-        uint32_t start_token = item.second ? _pools[item.first]->token1 : _pools[item.first]->token2;
-        std::vector<bool> direction;
-        direction.push_back(item.second);
-        visited_set.insert(item.first);
-        path.push_back(item.first);
-        dfs(start_token, visited_set, start_token, item.second, path, direction);
+        auto pool = item.first;
+        _start_token = item.second ? pool->token1 : pool->token2;
+        _path.push_back(item.first);
+        _direction.push_back(item.second);
+        _visited_set.insert(pool->address);
+        LOG(DEBUG) << "dfs start:" << item.first;
+        dfs(_start_token, 1);
+        _path.pop_back();
+        _direction.pop_back();
+        _visited_set.erase(pool->address);
     }
     LOG(INFO) << "online search complete with paths num:" << _compute_path_cnt;
     sandwich();
 }
 
-inline void OnlineSearch::dfs_impl(uint32_t pool_index, uint32_t start_token, butil::FlatSet<uint32_t>& visited_set, uint32_t cur_token, uint32_t len,
-         std::vector<uint32_t>& path, std::vector<bool>& direction, bool cur_direction) {
-    if (visited_set.seek(pool_index)) {
+inline void OnlineSearch::dfs_impl(PoolBase* pool, uint32_t cur_token, uint32_t len, bool direction) {
+    if (_visited_set.seek(pool->address)) {
         return;
     }
-    visited_set.insert(pool_index);
-    path.push_back(pool_index);
-    direction.push_back(cur_direction);
-    if (cur_token == start_token) {
-        compute(path, direction);
+    _visited_set.insert(pool->address);
+    _path.push_back(pool);
+    _direction.push_back(direction);
+    if (cur_token == _start_token) {
+        compute();
     }
     else {
-        dfs(start_token, visited_set, cur_token, len + 1, path, direction);
+        dfs(cur_token, len + 1);
     }
-    direction.pop_back();
-    path.pop_back();
-    visited_set.erase(pool_index);
+    _direction.pop_back();
+    _path.pop_back();
+    _visited_set.erase(pool->address);
 }
 
-void OnlineSearch::dfs(uint32_t start_token, butil::FlatSet<uint32_t>& visited_set, uint32_t cur_token, uint32_t len,
-         std::vector<uint32_t>& path, std::vector<bool>& direction) {
+void OnlineSearch::dfs(uint32_t cur_token, uint32_t len) {
     if (len > FLAGS_online_search_max_length) {
         return;
     }
     auto item = _pools_map.seek(cur_token);
     if (item) {
-        for (auto p:*item) {
-            for (uint32_t pool : p.second) {
-                dfs_impl(pool, start_token, visited_set, p.first, len, path, direction, 1);
-            }
+        for (auto pool:*item) {
+            dfs_impl(pool, pool->token2, len, 1);
         }
     }
-    item = _pools_reverse_map.seek(cur_token);
-    if (item) {
-        for (auto p:*item) {
-            for (uint32_t pool : p.second) {
-                dfs_impl(pool, start_token, visited_set, p.first, len, path, direction, 0);
-            }
+    auto item1 = _pools_reverse_map.seek(cur_token);
+    if (item1) {
+        for (auto pool:*item) {
+            dfs_impl(pool, pool->token2, len, 0);
         }
     }
-
-    for (auto p : PoolManager::instance()->_pools_map[cur_token]) {
-        for (uint32_t pool : p.second) {
-            dfs_impl(pool, start_token, visited_set, p.first, len, path, direction, 1);
-        }
+    for (auto pool : PoolManager::instance()->_pools_map[cur_token]) {
+        dfs_impl(pool, pool->token1, len, 1);
     }
-    for (auto p : PoolManager::instance()->_pools_reverse_map[cur_token]) {
-        for (uint32_t pool : p.second) {
-            dfs_impl(pool, start_token, visited_set, p.first, len, path, direction, 0);
-        }
+    for (auto pool : PoolManager::instance()->_pools_reverse_map[cur_token]) {
+        dfs_impl(pool, pool->token2, len, 1);
     }
 }
+const uint256_t MAX_TOKEN_NUM = (uint256_t(1) << 112);
 
-SearchResult compute_impl(const std::vector<PoolBase*>& path, const std::vector<bool>& direction, const std::vector<uint32_t>& pool_index);
+SearchResult compute_impl(const std::vector<PoolBase*>& path, const std::vector<bool>& direction) {
+    uint256_t accumulate_input = 0;
+    uint256_t accumulate_output = 0;
+    uint256_t max = 0;
+    uint256_t res_in = 0;
+    LOG(DEBUG) << "-------------compute start";
+    for (uint32_t i = 0; i < path.size(); ++i) {
+        LOG(DEBUG) << "tick: " << path[i]->get_tick() << " liquidity:" << path[i]->get_liquidit();
+    }
+    while (true) {
+        LOG(DEBUG) << "------round start";
+        uint256_t cur_boundary = MAX_TOKEN_NUM - 1;
+        for (uint32_t i = 0; i < path.size(); ++i) {
+            cur_boundary = path[i]->get_output_boundary(cur_boundary, direction[i]);
+            if (cur_boundary == 0) {
+                // end
+                break;
+            }
+        }
+        if (cur_boundary == 0) {
+            // end
+            break;
+        }
+        for (int i = path.size() - 1; i >= 0; --i) {
+            cur_boundary = path[i]->compute_input(cur_boundary, direction[i]);
+            if (cur_boundary >= MAX_TOKEN_NUM) {
+                break;
+            }
+        }
+        if (cur_boundary >= MAX_TOKEN_NUM) {
+            break;
+        }
+        uint256_t token_in = get_analytical_solution(path, direction, cur_boundary);
+        LOG(DEBUG) << "analytical_solution out:" << token_in;
+        if (token_in > cur_boundary) {
+            token_in = cur_boundary;
+        }
+        uint256_t token_out = token_in;
+        for (uint32_t i = 0; i < path.size(); ++i) {
+            token_out = path[i]->compute_output(token_out, direction[i]);
+        }
+        LOG(DEBUG) << "token in:" << token_in + accumulate_input << " token_out:" << token_out + accumulate_output;
+        uint256_t tmp = token_out + accumulate_output - token_in - accumulate_input;
+        if (tmp > max) {
+            max = tmp;
+            res_in = token_in + accumulate_input;
+        }
+        // to next round
+        accumulate_input += cur_boundary;
+        for (uint32_t i = 0; i < path.size(); ++i) {
+            cur_boundary = path[i]->process_swap(cur_boundary, direction[i]);
+        }
+        accumulate_output += cur_boundary;
+    }
+    uint32_t token_index = direction[0] ? path[0]->token1 : path[0]->token2;
+    PoolBase* to_eth_pool = 0;
+    uint256_t eth_out = PoolManager::instance()->token_to_eth(token_index, max, &to_eth_pool);
+    SearchResult result {path, res_in, eth_out, to_eth_pool};
+    for (auto p : path) {
+        delete p;
+    }
+    LOG(INFO) << "compute complete with token_out:" << max << " eth_out:" << eth_out << " token_in:" << res_in;
+    return result;
+}
 
-void OnlineSearch::compute(const std::vector<uint32_t>& path, const std::vector<bool>& direction) {
+void OnlineSearch::compute() {
     std::vector<PoolBase*> pools;
-    for (uint32_t i : path) {
-        auto p = _pools.seek(i);
-        PoolBase* pool = NULL;
-        if (p) {
-            pool = (*p)->get_copy();
+    for (auto pool : _path) {
+        pools.push_back(pool->get_copy());
+    }
+    std::stringstream ss;
+    ss << _start_token << ' ';
+    for (int i = 0; i < pools.size(); ++i) {
+        if (_direction[i]) {
+            ss << pools[i]->token2 << ' ';
         }
         else {
-            pool = PoolManager::instance()->_pools[i]->get_copy();
+            ss << pools[i]->token1 << ' ';
         }
-        pools.push_back(pool);
     }
-    SearchResult result = compute_impl(pools, direction, path);
+    LOG(DEBUG) << "compute start index:" << _compute_path_cnt << " path:" << ss.str();
+    SearchResult result = compute_impl(pools, _direction);
     ++_compute_path_cnt;
     GateWay::instance()->notice_search_online_result(result, _tx);
+    for (auto p:pools) {
+        delete p;
+    }
 }
 
 void OnlineSearch::sandwich() {

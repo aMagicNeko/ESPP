@@ -1,4 +1,4 @@
-#pragma once
+/*#pragma once
 #include "util/common.h"
 #include "search/search_result.h"
 class OfflineSearch : public Singleton<OfflineSearch> {
@@ -11,3 +11,4 @@ private:
     uint32_t _limit_length;
     std::atomic<uint32_t> _cur_token;
 };
+*/
