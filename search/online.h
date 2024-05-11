@@ -35,4 +35,5 @@ private:
     std::vector<bool> _direction;
     std::vector<PoolBase*> _path;
     uint32_t _start_token;
+    int _len_limit;
 };

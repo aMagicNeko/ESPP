@@ -5,6 +5,7 @@
 #include "search/analytical_solution.h"
 DEFINE_int32(online_search_max_length, 4, "max path length of online search");
 DEFINE_bool(check_simulate_result, false, "whether to check logs of simulate");
+DEFINE_int32(max_compute_cnt, 500, "max num of ompute paths");
 const static uint256_t MIN_LIQUIDITY = 10000000000000;
 static std::atomic<int> only_one_search(0);
 void OnlineSearch::search(std::shared_ptr<Transaction> tx, const std::vector<LogEntry>& logs) {
@@ -52,17 +53,20 @@ void OnlineSearch::search(std::shared_ptr<Transaction> tx, const std::vector<Log
         if (only_one_search.fetch_add(1) != 0)
             return;
     }
-    for (auto item : _pool_direction) {
-        auto pool = item.first;
-        _start_token = item.second ? pool->token1 : pool->token2;
-        _path.push_back(item.first);
-        _direction.push_back(item.second);
-        _visited_set.insert(pool->address);
-        LOG(DEBUG) << "dfs start:" << item.first;
-        dfs(_start_token, 1);
-        _path.pop_back();
-        _direction.pop_back();
-        _visited_set.erase(pool->address);
+    while (_len_limit <= FLAGS_online_search_max_length && _compute_path_cnt <= FLAGS_max_compute_cnt) {
+        for (auto item : _pool_direction) {
+            auto pool = item.first;
+            _start_token = item.second ? pool->token1 : pool->token2;
+            _path.push_back(item.first);
+            _direction.push_back(item.second);
+            _visited_set.insert(pool->address);
+            LOG(DEBUG) << "dfs start:" << item.first;
+            dfs(_start_token, 1);
+            _path.pop_back();
+            _direction.pop_back();
+            _visited_set.erase(pool->address);
+        }
+        ++_len_limit;
     }
     LOG(INFO) << "online search complete with paths num:" << _compute_path_cnt;
     sandwich();
@@ -87,7 +91,7 @@ inline void OnlineSearch::dfs_impl(PoolBase* pool, uint32_t cur_token, uint32_t 
 }
 
 void OnlineSearch::dfs(uint32_t cur_token, uint32_t len) {
-    if (len > FLAGS_online_search_max_length) {
+    if (len > _len_limit || _compute_path_cnt > FLAGS_max_compute_cnt) {
         return;
     }
     auto item = _pools_map.seek(cur_token);
