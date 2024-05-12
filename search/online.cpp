@@ -49,10 +49,11 @@ void OnlineSearch::search(std::shared_ptr<Transaction> tx, const std::vector<Log
             _pools_address_map[log.address]->on_event(log, true);
         }
     }
-    if (_pools_address_map.size()) {
-        if (only_one_search.fetch_add(1) != 0)
-            return;
+    if (_pools_address_map.size() == 0) {
+        return ;
     }
+    if (only_one_search.fetch_add(1) != 0)
+        return;
     while (_len_limit <= FLAGS_online_search_max_length && _compute_path_cnt <= FLAGS_max_compute_cnt) {
         for (auto item : _pool_direction) {
             auto pool = item.first;
@@ -60,8 +61,7 @@ void OnlineSearch::search(std::shared_ptr<Transaction> tx, const std::vector<Log
             _path.push_back(item.first);
             _direction.push_back(item.second);
             _visited_set.insert(pool->address);
-            LOG(DEBUG) << "dfs start:" << item.first;
-            dfs(_start_token, 1);
+            dfs(item.second ? pool->token2 : pool->token1, 1);
             _path.pop_back();
             _direction.pop_back();
             _visited_set.erase(pool->address);
@@ -102,7 +102,7 @@ void OnlineSearch::dfs(uint32_t cur_token, uint32_t len) {
     }
     auto item1 = _pools_reverse_map.seek(cur_token);
     if (item1) {
-        for (auto pool:*item) {
+        for (auto pool:*item1) {
             dfs_impl(pool, pool->token2, len, 0);
         }
     }
@@ -122,7 +122,7 @@ SearchResult compute_impl(const std::vector<PoolBase*>& path, const std::vector<
     uint256_t res_in = 0;
     LOG(DEBUG) << "-------------compute start";
     for (uint32_t i = 0; i < path.size(); ++i) {
-        LOG(DEBUG) << "tick: " << path[i]->get_tick() << " liquidity:" << path[i]->get_liquidit();
+        LOG(DEBUG) << path[i]->to_string();
     }
     while (true) {
         LOG(DEBUG) << "------round start";
@@ -173,9 +173,6 @@ SearchResult compute_impl(const std::vector<PoolBase*>& path, const std::vector<
     PoolBase* to_eth_pool = 0;
     uint256_t eth_out = PoolManager::instance()->token_to_eth(token_index, max, &to_eth_pool);
     SearchResult result {path, res_in, eth_out, to_eth_pool};
-    for (auto p : path) {
-        delete p;
-    }
     LOG(INFO) << "compute complete with token_out:" << max << " eth_out:" << eth_out << " token_in:" << res_in;
     return result;
 }

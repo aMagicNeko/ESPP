@@ -61,6 +61,7 @@ PoolBase* PoolBase::load_from_file(std::ifstream& file) {
         file.read(reinterpret_cast<char*>(&pool->tick_space), sizeof(pool->tick_space));
         ::load_from_file(pool->sqrt_price, file);
         file.read(reinterpret_cast<char*>(&pool->tick), sizeof(pool->tick));
+        ::load_from_file(pool->liquidity, file);
         size_t liq_size = 0;
         file.read(reinterpret_cast<char*>(&liq_size), sizeof(size_t));
         for (size_t cur = 0; cur < liq_size; ++cur) {

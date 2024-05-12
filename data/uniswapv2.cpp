@@ -51,6 +51,7 @@ int UniswapV2Pool::get_pools(ClientBase* client, std::vector<Address>& pools) {
                 pools.push_back(pool_address);
                 LOG(INFO) << "pool " << pools.size() << ": " << pool_address.to_string();
             }
+            //break;
         }
     }
     LOG(INFO) << "UniswapV2 init success ";
@@ -235,20 +236,20 @@ uint256_t UniswapV2Pool::compute_input(uint256_t out, bool direction) const {
         if (_reserve1 <= out) {
             return std::numeric_limits<uint128_t>::max();
         }
-        uint256_t liq = 1000000 * _reserve0 * _reserve1;
+        uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
         uint256_t numof_token1_after_swap = uint256_t(1000) * (_reserve1 - out);
         uint256_t numof_token0_after_swap = upround_div(liq, numof_token1_after_swap);
-        //LOG(DEBUG) << "liq:" << liq << " numof_token1_after_swap:" << numof_token1_after_swap << " numof_token0_after_swap:" << numof_token0_after_swap;
+        LOG(DEBUG) << "liq:" << liq << " numof_token1_after_swap:" << numof_token1_after_swap << " numof_token0_after_swap:" << numof_token0_after_swap;
         in = upround_div(numof_token0_after_swap - uint256_t(1000) * _reserve0, uint256_t(1000 - 3));
     }
     else {
         if (_reserve0 <= out) {
             return std::numeric_limits<uint128_t>::max();
         }
-        uint256_t liq = 1000000 * _reserve0 * _reserve1;
+        uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
         uint256_t numof_token0_after_swap = uint256_t(1000) * (_reserve0 - out);
         uint256_t numof_token1_after_swap = upround_div(liq, numof_token0_after_swap);
-        //LOG(DEBUG) << "liq:" << liq << " numof_token0_after_swap:" << numof_token0_after_swap << " numof_token1_after_swap:" << numof_token1_after_swap;
+        LOG(DEBUG) << "liq:" << liq << " numof_token0_after_swap:" << numof_token0_after_swap << " numof_token1_after_swap:" << numof_token1_after_swap;
         in = upround_div(numof_token1_after_swap - uint256_t(1000) * _reserve1, uint256_t(1000 - 3));
     }
     LOG(DEBUG) << "compute_input out:" << out << " int:" << in;
@@ -290,7 +291,7 @@ std::string UniswapV2Pool::to_string() const {
     ss << "UniswapV2 pool:" << address.to_string();
     ss << " token1:" << token1 << " token2:" << token2;
     ss << " reserve0:" << _reserve0;
-    ss << " reserve1" << _reserve1;
+    ss << " reserve1:" << _reserve1;
     return ss.str();
 }
 

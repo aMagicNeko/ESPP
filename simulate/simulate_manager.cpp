@@ -326,12 +326,12 @@ void SimulateManager::simulate_tx_impl(std::shared_ptr<Transaction> tx, int inde
         return;
     }
     evmc_message msg = build_message(tx, tx->gas - gas1);
-    LOG(INFO) << "msg:" << evmc_message_to_string(msg);
+    //LOG(INFO) << "msg:" << evmc_message_to_string(msg);
     // balance change on 
-    LOG(INFO) << "start to simulate:" << index;
+    //LOG(INFO) << "start to simulate:" << index;
     Result res = host->call(msg);
     LOG(INFO) << "end to simulte result:" << index << evmc_result_to_string(res);
-    LOG(INFO) << "simulate request count:" << _request_count;
+    //LOG(INFO) << "simulate request count:" << _request_count;
     _request_count = 0;
     auto tmp = host->get_logs();
     for (auto& p:tmp) {

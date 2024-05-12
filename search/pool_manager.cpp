@@ -149,23 +149,23 @@ int PoolManager::init() {
         }
         // init uniswapV2
         std::vector<Address> pools;
-        if (UniswapV2Pool::get_pools(_client, pools) != 0) {
+        while (UniswapV2Pool::get_pools(_client, pools) != 0) {
             LOG(ERROR) << "get uniswapv2 pools failed";
-            return -1;
+            reset_connection();
         }
-        if (UniswapV2Pool::get_data(_client, block_number, pools) != 0) {
+        while (UniswapV2Pool::get_data(_client, block_number, pools) != 0) {
             LOG(ERROR) << "get uniswapv2 data failed";
-            return -1;
+            reset_connection();
         }
         // init uniswapV3
         std::vector<UniswapV3Pool*> v3pools;
-        if (UniswapV3Pool::get_pools(_client, v3pools) != 0) {
+        while (UniswapV3Pool::get_pools(_client, v3pools) != 0) {
             LOG(ERROR) << "get uniswapv3 pools failed";
-            return -1;
+            reset_connection();
         }
-        if (UniswapV3Pool::get_data(_client, block_number, v3pools) != 0) {
+        while (UniswapV3Pool::get_data(_client, block_number, v3pools) != 0) {
             LOG(ERROR) << "get uniswapv3 data failed";
-            return -1;
+            reset_connection();
         }
         _trace_block = block_number;
     }
@@ -309,9 +309,9 @@ void* update_pools_wrap(void* arg) {
         delete p;
         return NULL;
     }
-    if (PoolManager::instance()->check_parent(*p) != 0) {
-        LOG(WARNING) << "block reorg!";
-    }
+    //if (PoolManager::instance()->check_parent(*p) != 0) {
+    //    LOG(WARNING) << "block reorg!";
+    //}
     while (PoolManager::instance()->update_pools() != 0) {
         LOG(INFO) << "update pools failed";
         if (PoolManager::instance()->reset_connection() == 0) {

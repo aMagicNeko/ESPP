@@ -70,7 +70,7 @@ inline int request_storage(ClientBase* client, const Address& address, const Byt
         }},
         {"id", 1}
     };
-    LOG(INFO) << "start to get storage:" << json_data.dump();
+    //LOG(INFO) << "start to get storage:" << json_data.dump();
     if (block_number != 0) [[unlikely]] {
         json_data["params"][1] = "0x" + uint64_to_str(block_number);
     }
@@ -91,7 +91,7 @@ inline int request_header_hash(ClientBase* client, uint64_t block_number, std::s
     json json_data = {
         {"jsonrpc", "2.0"}, {"method", "eth_getHeaderByNumber"}, {"params", {"0x" + uint64_to_str(block_number)}}, {"id", 1}
     };
-    LOG(INFO) << "start to request_header_hash:" << json_data.dump();
+    //LOG(INFO) << "start to request_header_hash:" << json_data.dump();
     if (client->write_and_wait(json_data) != 0) {
         LOG(ERROR) << "get block by number failed" << json_data.dump();
         return -1;

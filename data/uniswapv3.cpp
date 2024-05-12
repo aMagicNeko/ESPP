@@ -82,6 +82,9 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
                         << p->token2 << " fee:" << p->fee << " tick_space:" << p->tick_space;
             }
         }
+        //if (pools.size()) {
+        //    break;
+        //}
     }
     LOG(INFO) << "UniswapV3 pool size" << pools.size();
     return 0;
@@ -334,7 +337,7 @@ int UniswapV3Pool::on_event(const LogEntry& log, bool pending) {
             //LOG(INFO) << log.data.to_string().substr(256);
             //LOG(INFO) << Int<256>::decode(log.data.to_string().substr(2).substr(256));
             assert(Int<256>::decode(log.data.to_string().substr(2).substr(256)) == tick);
-            LOG(DEBUG) << "pending: sqrt_price:" << sqrt_price << " liquidity:" << liquidity;
+            LOG(DEBUG) << "pending: sqrt_price:" << sqrt_price << " liquidity:" << liquidity << " prev price:" << prev_price;
             if (prev_price > sqrt_price) {
                 return 1; // tx process zero for one swap
             }
@@ -378,6 +381,7 @@ void UniswapV3Pool::save_to_file(std::ofstream& file) {
     file.write(reinterpret_cast<char*>(&tick_space), sizeof(tick_space));
     ::save_to_file(sqrt_price, file);
     file.write(reinterpret_cast<char*>(&tick), sizeof(tick));
+    ::save_to_file(liquidity, file);
     size_t netliq_size = liquidity_net.size();
     file.write(reinterpret_cast<char*>(&netliq_size), sizeof(size_t));
     for (auto [x, y] : liquidity_net) {
@@ -550,7 +554,7 @@ uint256_t getNextSqrtPriceFromOutput(uint256_t sqrtPX96, uint128_t liquidity, ui
 }
 
 uint256_t UniswapV3Pool::get_output_boundary(uint256_t max_in, bool direction) const {
-    if (liquidity == 0 || max_in == 0) {
+    if (liquidity == 0 || max_in == 0 || sqrt_price == 0) {
         return 0; // end
     }
     uint256_t out = 0;
@@ -583,6 +587,9 @@ uint256_t UniswapV3Pool::get_output_boundary(uint256_t max_in, bool direction) c
 }
 
 uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32_t& tick_after, uint256_t& ratio_after, uint128_t& liquidity_after) const {
+    if (liquidity == 0 || in == 0 || sqrt_price == 0) {
+        return 0;
+    }
     int32_t tick_cur = tick;
     uint256_t cur_ratiao = sqrt_price;
     uint256_t out = 0;
@@ -630,6 +637,9 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
                 tmp = 0;
             }
             cur_liquidity = tmp1.convert_to<uint128_t>();
+            if (cur_liquidity == 0) {
+                break;
+            }
         }
     }
     else {
@@ -668,6 +678,9 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
                 tmp = 0;
             }
             cur_liquidity = tmp1.convert_to<uint128_t>();
+            if (cur_liquidity == 0) {
+                break;
+            }
         }
     }
     return out;
@@ -682,6 +695,9 @@ uint256_t UniswapV3Pool::compute_output(uint256_t in, bool direction) const {
 }
 
 uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
+    if (liquidity == 0 || out == 0 || sqrt_price == 0) {
+        return 0; // end
+    }
     int32_t tick_cur = tick;
     uint256_t cur_ratiao = sqrt_price;
     uint256_t in = 0;
@@ -715,6 +731,9 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
                 tmp = 0;
             }
             cur_liquidity = tmp.convert_to<uint128_t>();
+            if (cur_liquidity == 0) {
+                break;
+            }
         }
     }
     else {
@@ -746,6 +765,9 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
                 tmp = 0;
             }
             cur_liquidity = tmp.convert_to<uint128_t>();
+            if (cur_liquidity == 0) {
+                break;
+            }
         }
     }
     return in;
@@ -780,6 +802,9 @@ PoolBase* UniswapV3Pool::get_copy() {
     LockGuard lock(&_mutex);
     UniswapV3Pool* pool = new UniswapV3Pool(token1, token2, address, fee, tick_space);
     pool->liquidity_net = liquidity_net;
+    pool->liquidity = liquidity;
+    pool->tick = tick;
+    pool->sqrt_price = sqrt_price;
     return pool;
 }
 
