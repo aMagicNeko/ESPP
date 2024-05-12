@@ -35,7 +35,9 @@ int UniswapV2Pool::get_pools(ClientBase* client, std::vector<Address>& pools) {
             while (failed_cnt < FLAGS_long_request_failed_limit) {
                 res.clear();
                 if (multi_call.request_result(client, res, 0) != 0) {
-                    ++failed_cnt;
+                    failed_cnt = 0;
+                    PoolManager::instance()->reset_connection();
+                    client = PoolManager::instance()->get_client();
                     continue;
                 }
                 break;
@@ -72,7 +74,9 @@ int UniswapV2Pool::get_data(ClientBase* client, uint64_t block_num, const std::v
             while (true) {
                 if (multi_call.request_result(client, res, block_num) != 0) {
                     if (++failed_cnt >= FLAGS_long_request_failed_limit) {
-                        return -1;
+                        failed_cnt = 0;
+                        PoolManager::instance()->reset_connection();
+                        client = PoolManager::instance()->get_client();
                     }
                     continue;
                 }
@@ -106,7 +110,9 @@ int UniswapV2Pool::get_data(ClientBase* client, uint64_t block_num, const std::v
             while (true) {
                 if (multi_call.request_result(client, res, block_num) != 0) {
                     if (++failed_cnt >= FLAGS_long_request_failed_limit) {
-                        return -1;
+                        failed_cnt = 0;
+                        PoolManager::instance()->reset_connection();
+                        client = PoolManager::instance()->get_client();
                     }
                     continue;
                 }
@@ -197,7 +203,7 @@ inline uint256_t upround_div(uint256_t x, uint256_t y) {
 const uint256_t MAX_TOKEN_NUM = (uint256_t(1) << 112);
 
 uint256_t UniswapV2Pool::compute_output(uint256_t in, bool direction) const {
-    if (in >= MAX_TOKEN_NUM) {
+    if (in >= MAX_TOKEN_NUM || in == 0) {
         return 0;
     }
     uint256_t out = 0;
@@ -234,7 +240,7 @@ uint256_t UniswapV2Pool::compute_input(uint256_t out, bool direction) const {
     uint256_t in = 0;
     if (direction) {
         if (_reserve1 <= out) {
-            return std::numeric_limits<uint128_t>::max();
+            return MAX_TOKEN_NUM + 1;
         }
         uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
         uint256_t numof_token1_after_swap = uint256_t(1000) * (_reserve1 - out);
@@ -244,7 +250,7 @@ uint256_t UniswapV2Pool::compute_input(uint256_t out, bool direction) const {
     }
     else {
         if (_reserve0 <= out) {
-            return std::numeric_limits<uint128_t>::max();
+            return MAX_TOKEN_NUM + 1;
         }
         uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
         uint256_t numof_token0_after_swap = uint256_t(1000) * (_reserve0 - out);

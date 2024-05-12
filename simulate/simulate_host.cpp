@@ -3,8 +3,8 @@
 #include <iterator>
 #include "util/evmc_type.h"
 namespace evmc {
-SimulateHost::SimulateHost(VM* vm, SimulateHost* prev, const Address& from, uint64_t nonce, const evmc_tx_context& tx_context) : 
-        _vm(vm), _from(from), _nonce(nonce), _errno(0)   {
+SimulateHost::SimulateHost(VM* vm, SimulateHost* prev, const Address& from, uint64_t nonce, const evmc_tx_context& tx_context, SimulateManager* manager) : 
+        _vm(vm), _from(from), _nonce(nonce), _errno(0), _manager(manager) {
     _balance_map.init(1);
     _storage_map.init(1);
     _contract_self_destruct.init(1);
@@ -32,7 +32,7 @@ bool SimulateHost::account_exists(const address& addr) const noexcept {
         return true;
     }
     uint256be balence(0);
-    if (SimulateManager::instance()->get_balance(addr, balence) != 0) {
+    if (_manager->get_balance(addr, balence) != 0) {
         *const_cast<int*>(&this->_errno) = 1;
     }
     if (balence != uint256be(0)) {
@@ -47,12 +47,12 @@ bool SimulateHost::account_exists(const address& addr) const noexcept {
         return true;
     }
     size_t code_size = 0;
-    SimulateManager::instance()->get_code_size(addr, code_size);
+    _manager->get_code_size(addr, code_size);
     if (code_size != 0) {
         return true;
     }
     uint64_t nonce = 0;
-    SimulateManager::instance()->get_nonce(addr, code_size);
+    _manager->get_nonce(addr, code_size);
     if (nonce != 0) {
         return true;
     }
@@ -72,7 +72,7 @@ bytes32 SimulateHost::get_storage(const address& addr, const bytes32& key) const
         }
     }
     bytes32 val(0);
-    if (SimulateManager::instance()->get_storage(addr, key, val) != 0) {
+    if (_manager->get_storage(addr, key, val) != 0) {
         *const_cast<int*>(&this->_errno) = 1;
     }
     return val;
@@ -87,7 +87,7 @@ evmc_storage_status SimulateHost::set_storage(const address& addr, const bytes32
     auto pp = p->seek(key);
     if (pp == 0) {
         bytes32 val(0);
-        if (SimulateManager::instance()->get_storage(addr, key, val) != 0) {
+        if (_manager->get_storage(addr, key, val) != 0) {
             *const_cast<int*>(&this->_errno) = 1;
         }
         pp = p->insert(key, Storage{val, val});
@@ -135,7 +135,7 @@ uint256be SimulateHost::get_balance(const address& addr) const noexcept {
     auto p = _balance_map.seek(addr);
     if (p == 0) {
         uint256be balence(0);
-        if (SimulateManager::instance()->get_balance(addr, balence) != 0) {
+        if (_manager->get_balance(addr, balence) != 0) {
             *const_cast<int*>(&this->_errno) = 1;
         }
         return balence;
@@ -153,7 +153,7 @@ size_t SimulateHost::get_code_size(const address& addr) const noexcept {
         return (*p)->size();
     }
     size_t ret = 0;
-    if (SimulateManager::instance()->get_code_size(addr, ret) != 0) {
+    if (_manager->get_code_size(addr, ret) != 0) {
         *const_cast<int*>(&this->_errno) = 1;
         return 0;
     }
@@ -170,7 +170,7 @@ bytes32 SimulateHost::get_code_hash(const address& addr) const noexcept {
         return (*p)->hash();
     }
     bytes32 ret(0);
-    if (SimulateManager::instance()->get_code_hash(addr, ret) != 0) {
+    if (_manager->get_code_hash(addr, ret) != 0) {
         *const_cast<int*>(&this->_errno) = 1;
         return bytes32(0);
     }
@@ -193,7 +193,7 @@ size_t SimulateHost::copy_code(const address& addr, size_t code_offset, uint8_t*
         return len;
     }
     size_t ret = 0;
-    if (SimulateManager::instance()->copy_code(addr, code_offset, buffer_data, buffer_size, ret) != 0) {
+    if (_manager->copy_code(addr, code_offset, buffer_data, buffer_size, ret) != 0) {
         *const_cast<int*>(&this->_errno) = 1;
     }
     return ret;
@@ -363,7 +363,7 @@ evmc::Result SimulateHost::execute_message(const evmc_message& msg) noexcept
         update_balance(msg.recipient, msg.value);
     }
     std::shared_ptr<Code> code;
-    if (SimulateManager::instance()->get_code(msg.code_address, &code)) {
+    if (_manager->get_code(msg.code_address, &code)) {
         return evmc::Result();
     }
     //LOG(INFO) << "msg:" << evmc_message_to_string(msg);
@@ -396,7 +396,7 @@ const evmc_tx_context* SimulateHost::get_tx_context() const noexcept {
 
 bytes32 SimulateHost::get_block_hash(int64_t block_number) const noexcept {
     bytes32 hash(0);
-    if (SimulateManager::instance()->get_block_hash(block_number, hash) != 0) {
+    if (_manager->get_block_hash(block_number, hash) != 0) {
         *const_cast<int*>(&this->_errno) = 1;
     }
     return hash;

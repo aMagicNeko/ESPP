@@ -7,7 +7,6 @@ DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(wait_timeout_ms, 5000, "max wait time in milliseconds");
 // avoid high-parallel error on write
 DEFINE_int32(write_wait_ms, 1000, "wait before wait time in us");
-DECLARE_bool(simulate_check);
 const int ID_CIRCLE_SHILFT = 15;
 const int INDEX_AND = ((1 << ID_CIRCLE_SHILFT) - 1);
 ClientBase::ClientBase() : _tx_detail_latency("tx_detail_latency"), _header_latency("header_latency") {
@@ -84,7 +83,6 @@ int ClientBase::handle_headers(const json& j) {
         ret = PARSE_HEAD_NUMBER_ERROR;
     }
     ErrorHandle::instance()->reset();
-    TxPool::instance()->on_head();
     PoolManager::instance()->on_head(parent_hash);
     uint64_t timestamp = 0;
     if (parse_json(j, "timestamp", timestamp) != 0) {
@@ -147,7 +145,7 @@ int ClientBase::handle_headers(const json& j) {
         _block_info.gas_limit = gas_limit;
     }
     _block_info.number = number + 1;
-    evmc::SimulateManager::instance()->set_head_info(timestamp + 12, _block_info.gas_limit, _block_info.base_fee, number + 1, difficulty);
+    TxPool::instance()->on_head(timestamp + 12, _block_info.gas_limit, _block_info.base_fee, number + 1, difficulty);
     return ret;
 }
 
@@ -191,7 +189,7 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
             ret = PARSE_TRANSACTION_FROM_ERROR;
             break;
         }
-        if (!FLAGS_simulate_check && !TxPool::instance()->has_account(from)) {
+        if (!TxPool::instance()->has_account(from)) {
             // query nonce
             uint32_t id = _id.fetch_add(1);
             json tmp_j = {{"jsonrpc", "2.0"}, {"method", "eth_getTransactionCount"}, {"params", {j["from"], "latest"}}, {"id", id}};
@@ -279,12 +277,7 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
             }
         }
         LOG(INFO) << "pending tx:" << j.dump();
-        if (!FLAGS_simulate_check) [[likely]] {
-            TxPool::instance()->add_tx(tx);
-        }
-        else [[unlikely]] {
-            TxPool::instance()->add_simulate_tx(tx);
-        }
+        TxPool::instance()->add_tx(tx);
         //BLOCK_LOG("pending transaction: [from=%s][nonce=%lu][priorityFee=%lu][gas=%lu][value=%s][to=%s][input=%s]", 
                 //from.c_str(), nonce, priority_fee, gas, value.str().c_str(), to.c_str(), input.c_str());
         return 0;

@@ -74,7 +74,7 @@ class SimulateHost : public Host {
 public:
     virtual ~SimulateHost() noexcept = default;
 
-    SimulateHost(VM* vm, SimulateHost* prev, const Address& from, uint64_t nonce, const evmc_tx_context& tx_context);
+    SimulateHost(VM* vm, SimulateHost* prev, const Address& from, uint64_t nonce, const evmc_tx_context& tx_context, SimulateManager* manager);
     SimulateHost(const SimulateHost&) = default;
     SimulateHost(SimulateHost&&) = default;
     SimulateHost& operator=(SimulateHost&) = default;
@@ -164,6 +164,7 @@ private:
     evmc_tx_context _context; //cur tx
     int _errno; // request client error
     evmc_revision _rev = EVMC_LATEST_STABLE_REVISION;
+    SimulateManager* _manager;
 };
 
 

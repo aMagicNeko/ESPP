@@ -7,7 +7,6 @@
 // avoid a failure causing program abort
 DEFINE_int32(long_request_failed_limit, 50, "max try num in a big operation");
 DECLARE_int32(batch_size);
-DECLARE_bool(simulate_check);
 DEFINE_bool(simulate_based_on_all_prev_tx, false, "whether to simulate based on order of pending tx(keep the change of prev tx)");
 DEFINE_bool(check_tx_order, false, "whether to check the order of pending tx prev block");
 // on a new head, to check the order of prevent txs of the pre block
@@ -92,8 +91,13 @@ int TxPool::get_pending_txs() {
     return 0;
 }
 
-int TxPool::on_head() {
+int TxPool::on_head(uint64_t time_stamp, uint64_t gas_limit, uint256_t base_fee, uint64_t block_number, uint256_t difficulty) {
     bthread_t bid;
+    if (_simulate_manager) {
+        _simulate_manager->release_ptr();
+        _simulate_manager = 0;
+    }
+    _simulate_manager = new evmc::SimulateManager(_client, time_stamp, gas_limit, base_fee, block_number, difficulty);
     bthread_start_background(&bid, nullptr, get_pending_txs_wrap, NULL);
     if (FLAGS_check_tx_order) {
         auto tmp = new __gnu_pbds::tree<std::shared_ptr<Transaction>, __gnu_pbds::null_type, TxCompare,
@@ -118,10 +122,6 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
     auto account = _accounts.seek(tx->from);
     if (account == NULL) {
         account = _accounts.insert(tx->from, Account());
-    }
-    if (FLAGS_simulate_check) {
-        account->nonce = tx->nonce;
-        account->continuous_nonce = tx->nonce;
     }
     if (tx->nonce < account->nonce) {
         // old tx
@@ -148,20 +148,9 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
         // update account tx
         update_txs(account, tx->nonce);
     }
-    if (FLAGS_simulate_based_on_all_prev_tx) [[unlikely]] {
-        evmc::SimulateManager::instance()->notice_change(change_idx);
+    if (_simulate_manager) [[likely]] {
+        _simulate_manager->notice_tx(tx);
     }
-    else [[likely]] {
-        evmc::SimulateManager::instance()->notice_tx(tx);
-    }
-}
-
-void TxPool::add_simulate_tx(std::shared_ptr<Transaction> tx) {
-    LockGuard lock(&_mutex);
-    uint32_t i = _txs.size();
-    tx->account_priority_fee = 1000000 - i;
-    _txs.insert(tx);
-    evmc::SimulateManager::instance()->notice_change(i);
 }
 
 void TxPool::update_txs(Account* account, int64_t nonce) {
@@ -210,6 +199,7 @@ int TxPool::init(ClientBase* client) {
     _client = client;
     _raw_txs.init(1);
     s_get_pending_txs_wrap_status.store(0);
+    _simulate_manager = 0;
     return 0;
 }
 

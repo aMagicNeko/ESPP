@@ -323,14 +323,15 @@ inline int request_call(ClientBase* client, const Address& address, const std::s
 inline int request_tx_receipt(ClientBase* client, const std::string& hash, std::vector<LogEntry> logs) {
     json json_data = {
         {"jsonrpc", "2.0"},
-        {"method", "eth_call"},
+        {"method", "eth_getTransactionReceipt"},
         {"params", {hash}},
         {"id", 1}
     }; 
     if (client->write_and_wait(json_data) !=0) [[unlikely]] {
-        LOG(ERROR) << "get_filter_logs failed";
+        LOG(ERROR) << "request_tx_receipt failed";
         return -1;
     }
+    LOG(INFO) << "request_tx_receipt:" << json_data.dump();
     for (auto &it : json_data["result"]["logs"]) {
         if (it.find("removed") == it.end()) [[unlikely]] {
             LOG(ERROR) << "get logs failed: " << json_data.dump();

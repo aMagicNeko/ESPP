@@ -38,9 +38,14 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
         if (next > end_block) {
             break;
         }
-        for (int failed_cnt = 0; failed_cnt < FLAGS_long_request_failed_limit; ++failed_cnt) {
+        for (int failed_cnt = 0; ; ++failed_cnt) {
             logs.clear();
             if (request_filter_logs(client, cur, next - 1, topics, logs) != 0) {
+                if (failed_cnt >= FLAGS_long_request_failed_limit) {
+                    failed_cnt = 0;
+                    PoolManager::instance()->reset_connection();
+                    client = PoolManager::instance()->get_client();
+                }
                 continue;
             }
             break;
@@ -114,7 +119,9 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
             std::vector<std::string> res;
             while (true) {
                 if (failed_cnt >= FLAGS_long_request_failed_limit) {
-                    return -1;
+                    failed_cnt = 0;
+                    PoolManager::instance()->reset_connection();
+                    client = PoolManager::instance()->get_client();
                 }
                 res.clear();
                 if (multi_call.request_result(client, res, block_num) != 0) {
@@ -148,7 +155,9 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
             std::vector<std::string> res;
             while (true) {
                 if (failed_cnt >= FLAGS_long_request_failed_limit) {
-                    return -1;
+                    failed_cnt = 0;
+                    PoolManager::instance()->reset_connection();
+                    client = PoolManager::instance()->get_client();
                 }
                 res.clear();
                 if (multi_call.request_result(client, res, block_num) != 0) {
@@ -189,7 +198,9 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
             std::vector<std::string> res;
             while (true) {
                 if (failed_cnt >= FLAGS_long_request_failed_limit) {
-                    return -1;
+                    failed_cnt = 0;
+                    PoolManager::instance()->reset_connection();
+                    client = PoolManager::instance()->get_client();
                 }
                 res.clear();
                 if (multi_call.request_result(client, res, block_num) != 0) {
@@ -817,6 +828,9 @@ uint256_t UniswapV3Pool::get_liquidit() const {
 }
 
 uint256_t UniswapV3Pool::get_reserve0() const {
+    if (sqrt_price == 0) {
+        return 0;
+    }
     return liquidity / sqrt_price;
 }
 

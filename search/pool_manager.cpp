@@ -168,6 +168,7 @@ int PoolManager::init() {
             reset_connection();
         }
         _trace_block = block_number;
+        save_to_file();
     }
     // weth info & pools map
     gen_weth_info();
@@ -377,4 +378,8 @@ uint256_t PoolManager::eth_to_token(uint32_t token_index, uint256_t eth_in) {
         return (uint256_t(1) << 112) - 1;
     }
     return (uint512_t(eth_in) * _weth_pool_token_num[token_index] / _weth_pool_weth_num[token_index]).convert_to<uint256_t>();
+}
+
+ClientBase* PoolManager::get_client() {
+    return static_cast<ClientBase*>(_client);
 }

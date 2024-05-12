@@ -28,6 +28,7 @@ public:
     uint32_t tokens_num() { return _tokens_index.size(); }
     uint256_t token_to_eth(uint32_t token_index, uint256_t input, PoolBase** pool_ret);
     int reset_connection();
+    ClientBase* get_client();
 private:
     friend class OfflineSearch;
     friend class OnlineSearch;

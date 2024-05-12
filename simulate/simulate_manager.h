@@ -33,10 +33,11 @@ private:
 
 class SimulateHost;
 
-class SimulateManager : public Singleton<SimulateManager> {
+class SimulateManager {
 public:
-    SimulateManager();
-    void start(ClientBase* client);
+    static void* wrap_simulate_tx(void* arg);
+    SimulateManager(ClientBase* client, uint64_t time_stamp, uint64_t gas_limit, uint256_t base_fee, uint64_t block_number, uint256_t difficulty);
+    ~SimulateManager();
     int get_balance(const address& addr, uint256be& val);
     int get_storage(const address& addr, const bytes32& key, bytes32& value);
     int get_code_size(const address& addr, size_t& size);
@@ -44,31 +45,24 @@ public:
     int copy_code(const address& addr, size_t code_offset, uint8_t* buffer_data, size_t buffer_size, size_t& out_size);
     int get_block_hash(int64_t block_number, bytes32& hash);
     int get_code(const address& addr, std::shared_ptr<Code>* code = 0);
-    void notice_change(size_t change_idx); // 由tx_pool调用 通知pending_txs变化
-    void run_in_loop();
-    void set_head_info(uint64_t time_stamp, uint64_t gas_limit, uint256_t base_fee, uint64_t block_number, uint256_t difficulty); // 新 head 来时由client调用
     uint64_t gas_comsumption(uint64_t gas_limit, const Result& res);
-    void check_simulate();
     int get_nonce(const address& addr, uint64_t& nonce);
     void notice_tx(std::shared_ptr<Transaction> tx);
     void simulate_tx_impl(std::shared_ptr<Transaction> tx, int index = 0);
+    void release_ptr();
 private:
-    evmc_message build_message(std::shared_ptr<Transaction> tx, int64_t execution_gas_limit) noexcept;
+    evmc_message build_message(std::shared_ptr<Transaction> tx, int64_t execution_gas_limit, std::shared_ptr<Code> p) noexcept;
     butil::FlatMap<address, uint256be, std::hash<address>> _balence_map;
     butil::FlatMap<address, std::shared_ptr<Code>, std::hash<address>>  _code_map;
     butil::FlatMap<address, butil::FlatMap<bytes32, bytes32, std::hash<bytes32>>, std::hash<address>> _storage_map;
     butil::FlatMap<int64_t, bytes32> _block_hash;
     butil::FlatMap<address, uint64_t, std::hash<address>> _nonce_map;
-    std::vector<std::shared_ptr<SimulateHost>> _hosts;
     bthread_mutex_t _balance_mutex;
     bthread_mutex_t _code_mutex;
     bthread_mutex_t _storage_mutex;
     bthread_mutex_t _block_hash_mutex;
     bthread_mutex_t _nonce_map_mutex;
-    bthread_mutex_t _mutex;
     ClientBase* _client;
-    std::atomic<int> _change_idx;
-    std::atomic<uint32_t>* _butex; // 1 for notice
     VM* _vm;
     // pending block head info
     uint64_t _block_number;
@@ -83,14 +77,13 @@ private:
     // for simulate check
     std::vector<Result> _results;
     std::vector<std::vector<LogEntry>> _logs;
-    std::atomic<uint32_t>* _check_butex;
-    std::shared_ptr<Code> _input;
     // for latency
     // approximate to 2 times latency between the node and client
     // in ms
     bvar::LatencyRecorder _request_latency;
     // request count in a single execution
-    uint32_t _request_count;
+    std::vector<bthread_t> _bids; // simulating threads
+    std::atomic<uint32_t> _thread_cnt;
 };
 
 }

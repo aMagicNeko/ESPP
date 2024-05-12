@@ -9,7 +9,7 @@
 #include "simulate/evmc.hpp"
 #include "util/type.h"
 #include "util/transaction.h"
-
+#include "simulate/simulate_manager.h"
 class ClientBase;
 
 struct Account {
@@ -53,10 +53,9 @@ public:
     int get_pending_txs();
     void add_tx(std::shared_ptr<Transaction> tx);
     int set_nonce(const Address& from, uint64_t nonce);
-    int on_head();
+    int on_head(uint64_t time_stamp, uint64_t gas_limit, uint256_t base_fee, uint64_t block_number, uint256_t difficulty);
     // get pending tx by its order in the pool, x is used to notice if no new tx is here
     int get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<uint32_t>* x = NULL);
-    void add_simulate_tx(std::shared_ptr<Transaction> tx);
     void add_raw_tx(const std::string& hash, const std::string& raw_tx);
 private:
     /// @brief update the tx within the account
@@ -69,4 +68,5 @@ private:
     butil::FlatMap<std::string, std::string> _raw_txs;
     bthread_mutex_t _mutex; // for _accounts, _txs
     bvar::LatencyRecorder _unorder_ratio;
+    evmc::SimulateManager* _simulate_manager;
 };
