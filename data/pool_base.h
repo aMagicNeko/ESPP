@@ -30,8 +30,10 @@ public:
     virtual uint256_t compute_output(uint256_t in, bool direction) const = 0;
     virtual uint256_t compute_input(uint256_t out, bool direction) const = 0;
     virtual uint256_t process_swap(uint256_t in, bool direction) = 0;
+    virtual PoolType type() = 0;
 protected:
     bthread_mutex_t _mutex;
 };
 // get the create block of the contract
 int get_start_block(ClientBase* client, const Address& addr, uint64_t& res);
+constexpr uint256_t MAX_TOKEN_NUM = (uint256_t(1) << 112) - 1;

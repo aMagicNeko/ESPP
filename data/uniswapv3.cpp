@@ -34,7 +34,7 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
     std::vector<LogEntry> logs;
     for (uint64_t cur = start_block; ; ) {
         uint64_t next = cur + FLAGS_uniswapv3_logs_step;
-        LOG(INFO) << "cur:" << cur << " next:" << next;
+        LOG(DEBUG) << "cur:" << cur << " next:" << next;
         if (next > end_block) {
             break;
         }
@@ -56,7 +56,7 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
                 LOG(INFO) << "not matched factory address::" << log.address.to_string();
                 continue;
             }
-            LOG(INFO) << "matched log:" <<  log.to_string();
+            //LOG(INFO) << "matched log:" <<  log.to_string();
             if (log.data.size() != 64) [[unlikely]] {
                 LOG(INFO) << "wrong log data:" << log.data.to_string();
                 continue;
@@ -83,7 +83,7 @@ int UniswapV3Pool::get_pools(ClientBase* client, std::vector<UniswapV3Pool*>& po
             UniswapV3Pool* p = PoolManager::instance()->add_uniswapv3_pool(pool, token1, token2, fee, tick_space);
             if (p) {
                 pools.push_back(p);
-                LOG(INFO) << "UniswapV3 pool:" << p->address.to_string() << " token1:" << p->token1 << " token2" 
+                LOG(DEBUG) << "UniswapV3 pool:" << p->address.to_string() << " token1:" << p->token1 << " token2" 
                         << p->token2 << " fee:" << p->fee << " tick_space:" << p->tick_space;
             }
         }
@@ -110,7 +110,7 @@ inline int get_word_pos(int cur_tick, uint tick_space) {
 int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<UniswapV3Pool*>& pools) {
     MultiCall multi_call(1);
     uint32_t j = 0; // cur pool data index
-    LOG(INFO) << "start to get cur tick and price";
+    LOG(DEBUG) << "start to get cur tick and price";
     // get cur tick and price
     for (uint32_t i = 0; i < pools.size(); ++i) {
         multi_call.add_call(Call(pools[i]->address, slot0_selector));
@@ -181,7 +181,7 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
     }
     assert(j == pools.size());
     // get neighbor ticks
-    LOG(INFO) << "start to get tickBitMap";
+    LOG(DEBUG) << "start to get tickBitMap";
     j = 0;
     int batch_size = FLAGS_batch_size / 3;
     for (uint32_t i = 0; i < pools.size(); ++i) {
@@ -277,7 +277,7 @@ int UniswapV3Pool::get_data(ClientBase* client, uint64_t block_num, std::vector<
                 if (!pools[j]->liquidity_net.count(max_tick)) {
                     pools[j]->liquidity_net[max_tick] = (std::numeric_limits<int128_t>::min)();
                 }
-                LOG(INFO) << pools[j]->to_string();
+                LOG(DEBUG) << pools[j]->to_string();
                 ++j;
             }
         }
@@ -366,7 +366,7 @@ int UniswapV3Pool::on_event(const LogEntry& log, bool pending) {
         if (p) {
             return 0;
         }
-        LOG(INFO) << "matched uniswapV3 log, pool:" << log.address.to_string();
+        //LOG(DEBUG) << "matched uniswapV3 log, pool:" << log.address.to_string();
         s_on_event_pools.push_back(this);
         s_pool_address_set.insert(log.address);
     }
@@ -437,12 +437,17 @@ uint256_t getSqrtRatioAtTick(int tick) {
     // we then downcast because we know the result always fits within 160 bits due to our tick input constraint
     // we round up in the division so getTickAtSqrtRatio of the output price is always consistent
     sqrtPriceX96 = ((ratio >> 32) + (ratio % (uint256_t(1) << 32) == 0 ? 0 : 1));
+    //LOG(DEBUG) << "tick:" << tick << " ratio:" << sqrtPriceX96;
     return sqrtPriceX96;
 }
 
 using uint512_t = boost::multiprecision::uint512_t;
 
 const int FixedPoint96_RESOLUTION = 96;
+
+template<class T1, class T2> uint256_t upround_div(T1 x, T2 y) {
+    return uint256_t((x % y) ? (x / y + 1) : (x / y));
+}
 
 // https://github.com/Uniswap/v3-core/blob/main/contracts/libraries/SqrtPriceMath.sol
 uint256_t getAmount0Delta(uint256_t sqrtRatioAX96, uint256_t sqrtRatioBX96, uint128_t liquidity, bool roundUp) {
@@ -451,30 +456,24 @@ uint256_t getAmount0Delta(uint256_t sqrtRatioAX96, uint256_t sqrtRatioBX96, uint
         sqrtRatioAX96 = sqrtRatioBX96;
         sqrtRatioBX96 = tmp;
     }
-
-    uint256_t numerator1 = uint256_t(liquidity) << FixedPoint96_RESOLUTION;
+    uint512_t numerator1 = uint512_t(liquidity) << FixedPoint96_RESOLUTION;
     uint256_t numerator2 = sqrtRatioBX96 - sqrtRatioAX96;
     if (!sqrtRatioAX96) {
         LOG(ERROR) << "sqrtRatioAX96 = 0";
         return 0;
     }
     uint512_t x = uint512_t(1) * numerator1 * numerator2;
+    uint256_t ret = 0;
     if (roundUp) {
-        uint512_t y = x % sqrtRatioBX96 ? (x / sqrtRatioBX96 + 1) : x / sqrtRatioBX96;
-        uint512_t z = y % sqrtRatioAX96 ? (y / sqrtRatioAX96 + 1) : y / sqrtRatioAX96;
-        return z.convert_to<uint256_t>();
+        uint512_t y = upround_div(x, sqrtRatioBX96);
+        uint512_t z = upround_div(y, sqrtRatioAX96);
+        ret = z.convert_to<uint256_t>();
     }
     else {
-        return (x / sqrtRatioBX96 / sqrtRatioAX96).convert_to<uint256_t>();
+        ret =  (x / sqrtRatioBX96 / sqrtRatioAX96).convert_to<uint256_t>();
     }
-}
-
-inline uint256_t upround_div(uint256_t x, uint256_t y) {
-    return x % y ? (x / y + 1) : x / y;
-}
-
-inline uint256_t upround_div(uint512_t x, uint256_t y) {
-    return (x % y ? (x / y + 1) : x / y).convert_to<uint256_t>();
+    //LOG(DEBUG) << "sqrtRatioAX96:" << sqrtRatioAX96 << " sqrtRatioBX96:" << sqrtRatioBX96 << " liquidity:" << liquidity << " roundUp:" << roundUp << " amount0Delta:" << ret;
+    return ret;
 }
 
 const uint128_t FixedPoint96_Q96("0x1000000000000000000000000");
@@ -487,59 +486,60 @@ uint256_t getAmount1Delta(uint256_t sqrtRatioAX96, uint256_t sqrtRatioBX96, uint
         sqrtRatioBX96 = tmp;
     }
     uint512_t x = uint512_t(1) * liquidity * (sqrtRatioBX96 - sqrtRatioAX96);
+    uint256_t ret = 0;
     if (roundUp) {
-        return (x % FixedPoint96_Q96 ? (x / FixedPoint96_Q96 + 1) : FixedPoint96_Q96).convert_to<uint256_t>();
+        ret =  upround_div(x, FixedPoint96_Q96.convert_to<uint256_t>());
     }
     else {
-        return (x / FixedPoint96_Q96).convert_to<uint256_t>();
+        ret = (x / FixedPoint96_Q96).convert_to<uint256_t>();
     }
+    //LOG(DEBUG) << "sqrtRatioAX96:" << sqrtRatioAX96 << " sqrtRatioBX96:" << sqrtRatioBX96 << " liquidity:" << liquidity << " roundUp:" << roundUp << " amount0Delta:" << ret;
+    return ret;
 }
 
 uint256_t getNextSqrtPriceFromAmount0RoundingUp(uint256_t sqrtPX96, uint128_t liquidity, uint256_t amount, bool add) {
     // we short circuit amount == 0 because the result is otherwise not guaranteed to equal the input price
     if (amount == 0) return sqrtPX96;
-    uint256_t numerator1 = uint256_t(liquidity) << FixedPoint96_RESOLUTION;
-
+    uint512_t numerator1 = uint512_t(liquidity) << FixedPoint96_RESOLUTION;
+    uint256_t ret = 0;
     if (add) {
-        uint256_t product;
-        if ((product = amount * sqrtPX96) / amount == sqrtPX96) {
-            uint256_t denominator = numerator1 + product;
+        uint512_t product = uint512_t(amount) * sqrtPX96;
+        if (product / amount == sqrtPX96) {
+            uint512_t denominator = numerator1 + product;
             if (denominator >= numerator1) {
                 // always fits in 160 bits
-                uint512_t tmp = (uint512_t(numerator1)) * sqrtPX96;
-                if (tmp % denominator) {
-                    return (tmp / denominator + 1).convert_to<uint256_t>();
-                }
-                return (tmp / denominator).convert_to<uint256_t>();
+                uint512_t tmp = numerator1 * sqrtPX96;
+                ret = upround_div(tmp, denominator);
             }
         }
-        uint256_t tmp = (numerator1 / sqrtPX96) + amount;
-        if (numerator1 % tmp) {
-            return numerator1 / tmp + 1;
+        else {
+            uint512_t tmp = (numerator1 / sqrtPX96) + amount;
+            ret = upround_div(numerator1, tmp);
         }
-        return numerator1 / tmp;
     } else {
-        uint256_t product;
-        uint256_t denominator = numerator1 - product;
+        uint512_t product = uint512_t(amount) * sqrtPX96;
+        uint512_t denominator = numerator1 - product;
         uint512_t tmp = numerator1 * sqrtPX96;
-        if (tmp % denominator) {
-            return (tmp / denominator + 1).convert_to<uint256_t>();
-        }
-        return (tmp / denominator).convert_to<uint256_t>();
+        ret = upround_div(tmp, denominator);
     }
+    //LOG(DEBUG) << "sqrtRatioAX96:" << sqrtPX96 << " liquidity" <<  liquidity << " amount:" << amount << " netPrice:" << ret;
+    return ret;
 }
 
 uint256_t getNextSqrtPriceFromAmount1RoundingDown(uint256_t sqrtPX96, uint128_t liquidity, uint256_t amount, bool add) {
     // if we're adding (subtracting), rounding down requires rounding the quotient down (up)
     // in both cases, avoid a mulDiv for most inputs
+    uint256_t ret = 0;
     if (add) {
-        uint256_t quotient = (amount << FixedPoint96_RESOLUTION) / liquidity;
+        uint256_t quotient = ((uint512_t(amount) << FixedPoint96_RESOLUTION) / liquidity).convert_to<uint256_t>();
 
-        return (sqrtPX96 + quotient);
+        ret = (sqrtPX96 + quotient);
     } else {
-        uint256_t quotient = upround_div(amount << FixedPoint96_RESOLUTION, liquidity);
-        return (sqrtPX96 - quotient);
+        uint256_t quotient = upround_div(uint512_t(amount << FixedPoint96_RESOLUTION), liquidity.convert_to<uint256_t>());
+        ret = (sqrtPX96 - quotient);
     }
+    //LOG(DEBUG) << "sqrtRatioAX96:" << sqrtPX96 << " liquidity" <<  liquidity << " amount:" << amount << " netPrice:" << ret;
+    return ret;
 }
 
 uint256_t getNextSqrtPriceFromInput(uint256_t sqrtPX96, uint128_t liquidity, uint256_t amountIn, bool zeroForOne) {
@@ -579,7 +579,10 @@ uint256_t UniswapV3Pool::get_output_boundary(uint256_t max_in, bool direction) c
         --p;
         int next_tick = p->first;
         uint256_t next_sqrt_price = getSqrtRatioAtTick(next_tick);
-        out = getAmount1Delta(next_sqrt_price, sqrt_price, liquidity, true);
+        out = getAmount1Delta(next_sqrt_price, sqrt_price, liquidity, false);
+        //LOG(INFO) << "out:" << out;
+        //uint256_t real_in = getAmount0Delta(next_sqrt_price, sqrt_price, liquidity, true);
+        //LOG(INFO) << "real in:" << real_in;
     }
     else {
         auto p = liquidity_net.upper_bound(tick);
@@ -590,11 +593,13 @@ uint256_t UniswapV3Pool::get_output_boundary(uint256_t max_in, bool direction) c
         }
         int next_tick = p->first;
         uint256_t next_sqrt_price = getSqrtRatioAtTick(next_tick);
-        out = getAmount0Delta(next_sqrt_price, sqrt_price, liquidity, true);
+        out = getAmount0Delta(next_sqrt_price, sqrt_price, liquidity, false);
+        //LOG(DEBUG) << "out:" << out;
     }
     uint256_t tmp = compute_output(max_in, direction);
+    //LOG(DEBUG) << "tmp:" << tmp;
     out = tmp > out ? out : tmp;
-    return tmp;
+    return out;
 }
 
 uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32_t& tick_after, uint256_t& ratio_after, uint128_t& liquidity_after) const {
@@ -608,18 +613,15 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
     if (direction) {
         while (in) {
             auto p = liquidity_net.lower_bound(tick_cur);
-            if (p == liquidity_net.begin()) {
-                // out of sentinel
-                // not gotten tick
-                tick_after = tick_cur;
-                ratio_after = cur_ratiao;
-                liquidity_after = cur_liquidity;
-                return out;
+            if (p->first != tick_cur) {
+                if (p == liquidity_net.begin()) {
+                    break;
+                }
+                --p;
             }
-            --p;
             int next_tick = p->first;
             if (const_cast<UniswapV3Pool*>(this)->liquidity_net[next_tick] == 0) {
-                LOG(WARNING) << "empty tick";
+                //LOG(WARNING) << "empty tick:" << to_string();
                 // empty tick
                 const_cast<UniswapV3Pool*>(this)->liquidity_net.erase(next_tick);
                 continue;
@@ -641,14 +643,14 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
             in -= step_total_fee;
             out += getAmount1Delta(cur_ratiao, next_ratio, cur_liquidity, 0);
             cur_ratiao = next_ratio;
-            tick_cur = next_tick;
+            tick_cur = next_tick - 1;
             int256_t tmp1 = cur_liquidity.convert_to<int256_t>() - p->second;
             if (tmp < 0) {
                 // for sentinel
                 tmp = 0;
             }
             cur_liquidity = tmp1.convert_to<uint128_t>();
-            if (cur_liquidity == 0) {
+            if (cur_liquidity == 0 || p == liquidity_net.begin()) {
                 break;
             }
         }
@@ -668,7 +670,7 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
             uint256_t next_ratio = getSqrtRatioAtTick(next_tick);
             uint256_t step_amount = getAmount1Delta(cur_ratiao, next_ratio, cur_liquidity, 1);
             uint256_t real_in = (uint512_t(in) * (1000000 - fee) / 1000000).convert_to<uint256_t>();
-            if (real_in <= step_amount) {
+            if (real_in < step_amount) {
                 next_ratio = getNextSqrtPriceFromInput(cur_ratiao, cur_liquidity, real_in, false);
                 out += getAmount0Delta(cur_ratiao, next_ratio, cur_liquidity, 0);
                 tick_after = tick_cur;
@@ -694,6 +696,9 @@ uint256_t UniswapV3Pool::compute_output_impl(uint256_t in, bool direction, int32
             }
         }
     }
+    tick_after = tick_cur;
+    ratio_after = cur_ratiao;
+    liquidity_after = cur_liquidity;
     return out;
 }
 
@@ -716,26 +721,24 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
     if (direction) {
         while (out) {
             auto p = liquidity_net.lower_bound(tick_cur);
-            if (p == liquidity_net.begin()) {
-                // out of sentinel
-                // not gotten tick
-                uint512_t tmp = in * 1000000;
-                return upround_div(tmp, 1000000 - fee);
+            if (p->first != tick_cur) {
+                if (p == liquidity_net.begin()) {
+                    break;
+                }
+                --p;
             }
-            --p;
             int next_tick = p->first;
             uint256_t next_ratio = getSqrtRatioAtTick(next_tick);
             uint256_t step_amount = getAmount1Delta(cur_ratiao, next_ratio, cur_liquidity, false);
             if (out <= step_amount) {
                 next_ratio = getNextSqrtPriceFromOutput(cur_ratiao, cur_liquidity, out, true);
-                in += getAmount0Delta(cur_ratiao, next_ratio, cur_liquidity, 0);
-                uint512_t tmp = in * 1000000;
-                return upround_div(tmp, 1000000 - fee);
+                in += getAmount0Delta(cur_ratiao, next_ratio, cur_liquidity, true);
+                break;
             }
             in += getAmount0Delta(cur_ratiao, next_ratio, cur_liquidity, true);
             assert(out >= step_amount);
             out -= step_amount;
-            tick_cur = next_tick;
+            tick_cur = next_tick - 1;
             int256_t tmp = cur_liquidity.convert_to<int256_t>() - p->second;
             if (tmp < 0) {
                 // for sentinel
@@ -743,6 +746,11 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
             }
             cur_liquidity = tmp.convert_to<uint128_t>();
             if (cur_liquidity == 0) {
+                break;
+            }
+            if (p == liquidity_net.begin()) {
+                // out of sentinel
+                // not gotten tick
                 break;
             }
         }
@@ -753,22 +761,20 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
             if (p == liquidity_net.end()) {
                 // out of sentinel
                 // not gotten tick
-                uint512_t tmp = in * 1000000;
-                return upround_div(tmp, 1000000 - fee);
+                break;
             }
             int next_tick = p->first;
             uint256_t next_ratio = getSqrtRatioAtTick(next_tick);
+            //LOG(DEBUG) << "next r:" << next_ratio;
             uint256_t step_amount = getAmount0Delta(cur_ratiao, next_ratio, cur_liquidity, false);
-            if (out <= step_amount) {
+            if (out < step_amount) {
                 next_ratio = getNextSqrtPriceFromOutput(cur_ratiao, cur_liquidity, out, false);
-                in += getAmount1Delta(cur_ratiao, next_ratio, cur_liquidity, 0);
-                uint512_t tmp = in * 1000000;
-                return upround_div(tmp, 1000000 - fee);
+                in += getAmount1Delta(cur_ratiao, next_ratio, cur_liquidity, true);
+                break;
             }
             in += getAmount1Delta(cur_ratiao, next_ratio, cur_liquidity, true);
             assert(out >= step_amount);
             out -= step_amount;
-            tick_cur += tick_space;
             tick_cur = next_tick;
             int256_t tmp = cur_liquidity.convert_to<int256_t>() + p->second;
             if (tmp < 0) {
@@ -781,7 +787,8 @@ uint256_t UniswapV3Pool::compute_input(uint256_t out, bool direction) const {
             }
         }
     }
-    return in;
+    uint512_t tmp = in * 1000000;
+    return upround_div(tmp, 1000000 - fee);
 }
 
 uint256_t UniswapV3Pool::process_swap(uint256_t in, bool direction) {
@@ -798,10 +805,12 @@ uint256_t UniswapV3Pool::process_swap(uint256_t in, bool direction) {
 std::string UniswapV3Pool::to_string() const {
     std::stringstream ss;
     ss << "UniswapV3 pool:" << address.to_string();
+    ss << " tickSpace:" << tick_space;
+    ss << " fee:" << fee;
     ss << " token1:" << token1 << " token2:" << token2;
     ss << " tick:" << tick;
     ss << " sqrt_price:" << sqrt_price;
-    ss << "liqudity:" << liquidity;
+    ss << " liqudity:" << liquidity;
     ss << " liquidity_net:";
     for (auto [x, y] : liquidity_net) {
         ss << x << " " << y << ' ';
@@ -823,19 +832,24 @@ int UniswapV3Pool::get_tick() const {
     return tick;
 }
 
+constexpr uint256_t SCALING_FACTOR = uint256_t(1) << 96;
+
 uint256_t UniswapV3Pool::get_liquidit() const {
     return liquidity * liquidity;
 }
 
 uint256_t UniswapV3Pool::get_reserve0() const {
+    // TODO: get reserve by address of ERC20
+    //return 0;
     if (sqrt_price == 0) {
         return 0;
     }
-    return liquidity / sqrt_price;
+    return uint256_t(liquidity) * SCALING_FACTOR / sqrt_price;
 }
 
 uint256_t UniswapV3Pool::get_reserve1() const {
-    return liquidity * sqrt_price;
+    //return 0;
+    return liquidity * sqrt_price / SCALING_FACTOR;
 }
 
 uint32_t UniswapV3Pool::get_fee_rate() const {

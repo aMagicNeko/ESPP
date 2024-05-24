@@ -153,6 +153,12 @@ void TxPool::add_tx(std::shared_ptr<Transaction> tx) {
     }
 }
 
+void TxPool::add_my_tx( std::shared_ptr<Transaction> tx, const Transaction& my_tx) {
+    if (_simulate_manager) [[likely]] {
+        _simulate_manager->notice_tx(tx, my_tx);
+    }
+}
+
 void TxPool::update_txs(Account* account, int64_t nonce) {
     int64_t cur = nonce;
     uint64_t prev_fee = _UINT64_MAX;
@@ -217,5 +223,7 @@ int TxPool::get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<u
 }
 
 void TxPool::add_raw_tx(const std::string& hash, const std::string& raw_tx) {
+    _rw_lock.lock_write();
     _raw_txs.insert(hash, raw_tx);
+    _rw_lock.unlock_write();
 }

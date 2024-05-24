@@ -3,6 +3,7 @@
 #include "data/tx_pool.h"
 #include "simulate/simulate_manager.h"
 #include "search/pool_manager.h"
+#include "gateway/gateway.h"
 DEFINE_int32(timeout_ms, 5000, "RPC timeout in milliseconds");
 DEFINE_int32(wait_timeout_ms, 5000, "max wait time in milliseconds");
 // avoid high-parallel error on write
@@ -84,6 +85,7 @@ int ClientBase::handle_headers(const json& j) {
     }
     ErrorHandle::instance()->reset();
     PoolManager::instance()->on_head(parent_hash);
+    GateWay::instance()->on_head();
     uint64_t timestamp = 0;
     if (parse_json(j, "timestamp", timestamp) != 0) {
         LOG(ERROR) << "parse timestamp failed: " << j.dump();
@@ -276,7 +278,7 @@ int ClientBase::handle_transactions(const json& j, uint32_t id) {
                 tx->access_list.push_back(entry);
             }
         }
-        LOG(INFO) << "pending tx:" << j.dump();
+        //LOG(INFO) << "pending tx:" << j.dump();
         TxPool::instance()->add_tx(tx);
         //BLOCK_LOG("pending transaction: [from=%s][nonce=%lu][priorityFee=%lu][gas=%lu][value=%s][to=%s][input=%s]", 
                 //from.c_str(), nonce, priority_fee, gas, value.str().c_str(), to.c_str(), input.c_str());
@@ -302,8 +304,8 @@ void* ClientBase::run(void* param) {
             if (errno == EWOULDBLOCK) {
                 continue;
             }
-            failed = BTHREAD_FDTIMED_WAIT_ERROR;
-            LOG(ERROR) << "bthread_fd_timedwait failed, ret=" << failed;
+            //failed = BTHREAD_FDTIMED_WAIT_ERROR;
+            //LOG(ERROR) << "bthread_fd_timedwait failed, ret=" << failed;
             continue;
         }
         client->read(json_data);
@@ -349,7 +351,7 @@ void* ClientBase::run(void* param) {
                 continue;
             }
             else if (client->_raw_tx[id & INDEX_AND].size()) {
-                LOG(DEBUG) << "raw_tx:" << json_data;
+                //LOG(DEBUG) << "raw_tx:" << json_data;
                 TxPool::instance()->add_raw_tx(client->_raw_tx[id & INDEX_AND], json_data["result"]);
                 client->_raw_tx[id & INDEX_AND] = "";
                 continue;
@@ -446,7 +448,7 @@ int ClientBase::write_and_wait(json& j) {
     timespec wait_abstime = butil::microseconds_to_timespec(butil::gettimeofday_us()
         + FLAGS_wait_timeout_ms * 1000L);
     if (bthread::butex_wait(butex, id, &wait_abstime) < 0) {
-        LOG(ERROR) << "bthread::butex_wait failed";
+        LOG(ERROR) << "bthread::butex_wait failed:" << errno;
         return -1;
     }
     if (get_data(j, id) != 0) {

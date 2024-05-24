@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "TransferHelper",
+  "sourceName": "contracts/v3/libraries/TransferHelper.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea2646970667358221220ee002d178cde9431146bbd4005ae68cfc937d09da652cb6c6fa94db7e7f0a31f64736f6c63430008180033",
+  "deployedBytecode": "0x600080fdfea2646970667358221220ee002d178cde9431146bbd4005ae68cfc937d09da652cb6c6fa94db7e7f0a31f64736f6c63430008180033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

@@ -1,0 +1,32 @@
+main_kernel_version : "Linux ip-172-31-44-93.eu-central-1.compute.internal 5.14.0-362.18.1.el9_3.aarch64 #1 SMP PREEMPT_DYNAMIC Wed Jan 3 18:51:55 EST 2024 aarch64 aarch64 aarch64 GNU/Linux
+"
+main_process_cmdline : "/home/ec2-user/ESPP/build/main
+/home/ec2-user/ESPP/conf/gflags.conf
+"
+main_process_context_switches_involuntary_second : 0
+main_process_context_switches_voluntary_second : 22
+main_process_cpu_usage : 0.060
+main_process_cpu_usage_system : 0.002
+main_process_cpu_usage_user : 0.058
+main_process_disk_read_bytes_second : 0
+main_process_disk_write_bytes_second : 0
+main_process_faults_major : 0
+main_process_faults_minor_second : 103
+main_process_fd_count : 20
+main_process_inblocks_second : 0
+main_process_io_read_bytes_second : 473
+main_process_io_read_second : 5
+main_process_io_write_bytes_second : 47136
+main_process_io_write_second : 400
+main_process_memory_data_and_stack : 275357696
+main_process_memory_resident : 169508864
+main_process_memory_shared : 15724544
+main_process_memory_text : 11972608
+main_process_memory_virtual : 300023808
+main_process_nice : 0
+main_process_outblocks_second : 0
+main_process_priority : 20
+main_process_thread_count : 13
+main_process_uptime : 600.061785
+main_process_username : "root"
+main_process_work_dir : "/home/ec2-user/ESPP/data"

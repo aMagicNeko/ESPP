@@ -36,6 +36,7 @@ class SimulateHost;
 class SimulateManager {
 public:
     static void* wrap_simulate_tx(void* arg);
+    static void* wrap_simulate_my_tx(void* arg);
     SimulateManager(ClientBase* client, uint64_t time_stamp, uint64_t gas_limit, uint256_t base_fee, uint64_t block_number, uint256_t difficulty);
     ~SimulateManager();
     int get_balance(const address& addr, uint256be& val);
@@ -48,7 +49,8 @@ public:
     uint64_t gas_comsumption(uint64_t gas_limit, const Result& res);
     int get_nonce(const address& addr, uint64_t& nonce);
     void notice_tx(std::shared_ptr<Transaction> tx);
-    void simulate_tx_impl(std::shared_ptr<Transaction> tx, int index = 0);
+    void notice_tx(std::shared_ptr<Transaction> tx, const Transaction& my_tx);
+    void simulate_tx_impl(std::shared_ptr<Transaction> tx, std::shared_ptr<SimulateHost>& host);
     void release_ptr();
 private:
     evmc_message build_message(std::shared_ptr<Transaction> tx, int64_t execution_gas_limit, std::shared_ptr<Code> p) noexcept;

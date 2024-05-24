@@ -3,6 +3,7 @@
 #include "util/common.h"
 #include "util/json_parser.h"
 #include "util/type.h"
+#include "util/transaction.h"
 inline std::string uint64_to_str(uint64_t x) {
     std::stringstream ss;
     ss << std::hex << x;
@@ -320,7 +321,7 @@ inline int request_call(ClientBase* client, const Address& address, const std::s
     return 0;
 }
 
-inline int request_tx_receipt(ClientBase* client, const std::string& hash, std::vector<LogEntry> logs) {
+inline int request_tx_receipt(ClientBase* client, const std::string& hash, std::vector<LogEntry>& logs) {
     json json_data = {
         {"jsonrpc", "2.0"},
         {"method", "eth_getTransactionReceipt"},
@@ -331,7 +332,7 @@ inline int request_tx_receipt(ClientBase* client, const std::string& hash, std::
         LOG(ERROR) << "request_tx_receipt failed";
         return -1;
     }
-    LOG(INFO) << "request_tx_receipt:" << json_data.dump();
+    //LOG(INFO) << "request_tx_receipt:" << json_data.dump();
     for (auto &it : json_data["result"]["logs"]) {
         if (it.find("removed") == it.end()) [[unlikely]] {
             LOG(ERROR) << "get logs failed: " << json_data.dump();
@@ -342,5 +343,48 @@ inline int request_tx_receipt(ClientBase* client, const std::string& hash, std::
         }
         logs.push_back(LogEntry(it));
     }
+    return 0;
+}
+
+inline int request_sign(ClientBase* client, const Transaction& tx, std::string& raw_tx, uint64_t base_fee) {
+    json json_data = {
+        {"jsonrpc", "2.0"},
+        {"method", "eth_signTransaction"},
+        {"params", {{{"from", tx.from.to_string()}, {"to", tx.to.to_string()}, {"gas", "0x" + uint64_to_str(tx.gas)}, {"value", "0x0"}, {"data", tx.input.to_string()}, {"nonce", "0x" + uint64_to_str(tx.nonce)}, /*{"gasPrice", "0x" + uint64_to_str(base_fee + tx.priority_fee)}}}},*/ {"maxFeePerGas", "0x" + uint64_to_str(base_fee + tx.priority_fee)}, {"maxPriorityFeePerGas", "0x" + uint64_to_str(tx.priority_fee)}, {"type", "0x2"}}}},
+        {"id", 1}
+    }; 
+    //LOG(DEBUG) << "start to sign:" << json_data.dump();
+    if (client->write_and_wait(json_data) !=0) [[unlikely]] {
+        LOG(ERROR) << "sign failed" << json_data.dump();
+        return -1;
+    }
+    if (json_data.find("result") == json_data.end()) {
+        LOG(ERROR) << "sign failed" << json_data.dump();
+        return -1;
+    }
+    raw_tx = json_data["result"]["raw"];
+    //LOG(INFO) << "sign:" << json_data.dump();
+    //LOG(INFO) << "end to sign:" << json_data.dump();
+    return 0;
+}
+
+inline int request_sign_data(ClientBase* client, const std::string& address, const std::string& message, std::string& sign) {
+    json json_data = {
+        {"jsonrpc", "2.0"},
+        {"method", "eth_sign"},
+        {"params", {address, message}},
+        {"id", 1}
+    }; 
+    LOG(DEBUG) << "start to sign data:" << json_data.dump();
+    if (client->write_and_wait(json_data) !=0) [[unlikely]] {
+        LOG(ERROR) << "sign data failed:" << json_data.dump();
+        return -1;
+    }
+    if (json_data.find("result") == json_data.end()) {
+        LOG(ERROR) << "sign data failed:" << json_data.dump();
+        return -1;
+    }
+    LOG(DEBUG) << "end to sign data:" << json_data.dump();
+    sign = json_data["result"];
     return 0;
 }

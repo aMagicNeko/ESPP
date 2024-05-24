@@ -1,0 +1,10 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "console",
+  "sourceName": "contracts/console.sol",
+  "abi": [],
+  "bytecode": "0x60808060405234601757603a9081601d823930815050f35b600080fdfe600080fdfea264697066735822122009bd9941cdbae70b7738cb7fc0753d030cc4960dcefb1867147b6db3849831d064736f6c63430008180033",
+  "deployedBytecode": "0x600080fdfea264697066735822122009bd9941cdbae70b7738cb7fc0753d030cc4960dcefb1867147b6db3849831d064736f6c63430008180033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

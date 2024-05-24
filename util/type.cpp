@@ -111,8 +111,9 @@ std::string LogEntry::to_string() const {
     oss << "Address: " << address.to_string() << '\n';
     oss << "Data: " << data.to_string() << '\n';
     oss << "Topics: ";
-    for(auto topic : topics)
+    for(auto topic : topics) {
         oss << topic.to_string() << ' ';
+    }
     oss << '\n';
     return oss.str();
 }

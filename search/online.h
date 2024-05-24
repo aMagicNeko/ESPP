@@ -18,8 +18,10 @@ public:
             delete item.second;
         }
     }
-    void search(std::shared_ptr<Transaction> tx, const std::vector<LogEntry>& logs);
+    void search(std::shared_ptr<Transaction> tx, const std::vector<LogEntry>& logs, uint64_t number);
     void dfs(uint32_t cur_token, uint32_t len);
+    void offline_search();
+    static void start_offline_search_thread(int nthreads = 1);
 private:
     void dfs_impl(PoolBase* pool, uint32_t cur_token, uint32_t len, bool direction);
     void sandwich();
@@ -35,5 +37,6 @@ private:
     std::vector<bool> _direction;
     std::vector<PoolBase*> _path;
     uint32_t _start_token;
-    int _len_limit;
+    uint64_t _block_number;
+    int _dfs_cnt = 0;
 };

@@ -1,0 +1,14 @@
+main_header_latency : 0
+main_header_latency_80 : 0
+main_header_latency_90 : 0
+main_header_latency_99 : 0
+main_header_latency_999 : 0
+main_header_latency_9999 : 0
+main_header_max_latency : 0
+main_tx_detail_latency : 0.000
+main_tx_detail_latency_80 : 0
+main_tx_detail_latency_90 : 0
+main_tx_detail_latency_99 : 0
+main_tx_detail_latency_999 : 0
+main_tx_detail_latency_9999 : 0
+main_tx_detail_max_latency : 0

@@ -32,6 +32,9 @@ public:
     uint256_t compute_output(uint256_t in, bool direction) const override;
     uint256_t compute_input(uint256_t out, bool direction) const override;
     uint256_t process_swap(uint256_t in, bool direction) override;
+    PoolType type() override {
+        return UniswapV3;
+    }
 private:
     uint256_t compute_output_impl(uint256_t in, bool direction, int32_t& tick_after, uint256_t& ratio_after, uint128_t& liquidity_after) const;
 };

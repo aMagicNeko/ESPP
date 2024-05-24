@@ -1,0 +1,47 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "/home/ec2-user/ESPP/virtual_scripts/contracts/UniswapArb.sol": {
+      "lastModificationDate": 1716523130426,
+      "contentHash": "fe9718e6c454d17410ec7547c8023439",
+      "sourceName": "contracts/UniswapArb.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 10
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata",
+                "storageLayout"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "IERC20",
+        "IUniswapV2Pair",
+        "IUniswapV3Pool",
+        "IWETH",
+        "MyArb"
+      ]
+    }
+  }
+}

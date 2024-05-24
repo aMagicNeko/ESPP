@@ -10,7 +10,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(Boost_NO_BOOST_CMAKE ON)
 
 #add_compile_options(-g -O2 -DNDEBUG -pipe -Wall -Werror -fPIC -Wno-deprecated -Wno-unused-parameter -fno-omit-frame-pointer -D__STDC_FORMAT_MACROS -DBAIDU_RPC_ENABLE_CPU_PROFILER -DBAIDU_RPC_ENABLE_HEAP_PROFILER -lz)
-add_compile_options(-g -pipe -Wall -Werror -fPIC -Wno-deprecated -Wno-narrowing -Wno-unused-parameter -fno-omit-frame-pointer -D__STDC_FORMAT_MACROS -DBAIDU_RPC_ENABLE_CPU_PROFILER -DBAIDU_RPC_ENABLE_HEAP_PROFILER -lz -Wno-sign-compare -Wno-unknown-pragmas -Wno-ignored-attributes -Wno-unused-function)
+add_compile_options(-g -pipe -DNDEBUG -Wall -Werror -fPIC -Wno-deprecated -Wno-narrowing -Wno-unused-parameter -fno-omit-frame-pointer -D__STDC_FORMAT_MACROS -DBAIDU_RPC_ENABLE_CPU_PROFILER -DBAIDU_RPC_ENABLE_HEAP_PROFILER -lz -Wno-sign-compare -Wno-unknown-pragmas -Wno-ignored-attributes -Wno-unused-function)
 
 find_package(protobuf CONFIG REQUIRED)
 find_package(Boost COMPONENTS system REQUIRED)
@@ -46,7 +46,7 @@ file(GLOB SIMULATE_SOURCES "simulate/*.cpp")
 file(GLOB SEARCH_SOURCES "search/*.cpp")
 file(GLOB GATEWAY_SOURCES "gateway/*.cpp")
 add_executable(main main.cpp ${UTIL_SOURCES} ${DATA_SOURCES} ${SIMULATE_SOURCES} ${SEARCH_SOURCES} ${GATEWAY_SOURCES} ${ALETH_SOURCES})
-add_executable(foo foo.cpp)
+add_executable(foo foo.cpp ${UTIL_SOURCES} ${DATA_SOURCES} ${SIMULATE_SOURCES} ${SEARCH_SOURCES} ${GATEWAY_SOURCES} ${ALETH_SOURCES})
 
 target_link_libraries(main PRIVATE ${MY_LIBS} dl)
 target_link_libraries(foo PRIVATE ${MY_LIBS} dl)

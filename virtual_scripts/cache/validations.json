@@ -1,0 +1,573 @@
+{
+  "version": "3.4",
+  "log": [
+    {
+      "contracts/UniswapArb.sol:IERC20": {
+        "src": "contracts/UniswapArb.sol:3",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "balanceOf(address)",
+          "transfer(address,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IUniswapV2Pair": {
+        "src": "contracts/UniswapArb.sol:23",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "swap(uint256,uint256,address,bytes)",
+          "getReserves()"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IUniswapV3Pool": {
+        "src": "contracts/UniswapArb.sol:13",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "swap(address,bool,int256,uint160,bytes)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IWETH": {
+        "src": "contracts/UniswapArb.sol:8",
+        "inherit": [
+          "contracts/UniswapArb.sol:IERC20"
+        ],
+        "libraries": [],
+        "methods": [
+          "deposit()",
+          "withdraw(uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:MyArb": {
+        "src": "contracts/UniswapArb.sol:28",
+        "version": {
+          "withMetadata": "019740401fd0254dd2d922b9a077aea34143a535339e7e3588804ac83d52a5a8",
+          "withoutMetadata": "8c670aab7b71e1ed8dacff84a9813e2f9ebba18a6b29b4c490bed0cb07b88881",
+          "linkedWithoutMetadata": "8c670aab7b71e1ed8dacff84a9813e2f9ebba18a6b29b4c490bed0cb07b88881"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "uniswapV2Call(address,uint256,uint256,bytes)",
+          "uniswapV3SwapCallback(int256,int256,bytes)",
+          "startFlashLoan((address,uint256,address,address),struct MyArb.Step[],uint256,uint256,bytes)",
+          "withdrawFunds()",
+          "()",
+          "getAmountOut(uint256,uint256,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "MyArb",
+            "src": "contracts/UniswapArb.sol:36"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "owner",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_address",
+              "contract": "MyArb",
+              "src": "contracts/UniswapArb.sol:29"
+            }
+          ],
+          "types": {
+            "t_address": {
+              "label": "address",
+              "numberOfBytes": "20"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      }
+    },
+    {
+      "contracts/UniswapArb.sol:IERC20": {
+        "src": "contracts/UniswapArb.sol:3",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "balanceOf(address)",
+          "transfer(address,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IUniswapV2Pair": {
+        "src": "contracts/UniswapArb.sol:23",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "swap(uint256,uint256,address,bytes)",
+          "getReserves()"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IUniswapV3Pool": {
+        "src": "contracts/UniswapArb.sol:13",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "swap(address,bool,int256,uint160,bytes)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IWETH": {
+        "src": "contracts/UniswapArb.sol:8",
+        "inherit": [
+          "contracts/UniswapArb.sol:IERC20"
+        ],
+        "libraries": [],
+        "methods": [
+          "deposit()",
+          "withdraw(uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:MyArb": {
+        "src": "contracts/UniswapArb.sol:28",
+        "version": {
+          "withMetadata": "ace7cc6a135eb4c1f786e53938d2b67f23d919db7579090eaaf7025d2aa313ea",
+          "withoutMetadata": "443ea645a44a59070cd6e332677acba944dfa30ef30c29897bb9eea734569f92",
+          "linkedWithoutMetadata": "443ea645a44a59070cd6e332677acba944dfa30ef30c29897bb9eea734569f92"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "uniswapV2Call(address,uint256,uint256,bytes)",
+          "uniswapV3SwapCallback(int256,int256,bytes)",
+          "startFlashLoan((address,uint256,address,address),struct MyArb.Step[],uint256,uint256,bytes)",
+          "withdrawFunds()",
+          "()",
+          "getAmountOut(uint256,uint256,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "MyArb",
+            "src": "contracts/UniswapArb.sol:36"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "owner",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_address",
+              "contract": "MyArb",
+              "src": "contracts/UniswapArb.sol:29"
+            }
+          ],
+          "types": {
+            "t_address": {
+              "label": "address",
+              "numberOfBytes": "20"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      }
+    },
+    {
+      "contracts/UniswapArb.sol:IERC20": {
+        "src": "contracts/UniswapArb.sol:4",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "balanceOf(address)",
+          "transfer(address,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IUniswapV2Pair": {
+        "src": "contracts/UniswapArb.sol:24",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "swap(uint256,uint256,address,bytes)",
+          "getReserves()"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IUniswapV3Pool": {
+        "src": "contracts/UniswapArb.sol:14",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "swap(address,bool,int256,uint160,bytes)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:IWETH": {
+        "src": "contracts/UniswapArb.sol:9",
+        "inherit": [
+          "contracts/UniswapArb.sol:IERC20"
+        ],
+        "libraries": [],
+        "methods": [
+          "deposit()",
+          "withdraw(uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      },
+      "contracts/UniswapArb.sol:MyArb": {
+        "src": "contracts/UniswapArb.sol:29",
+        "version": {
+          "withMetadata": "468d45326d06a6ad9c84f1313ca8ef7c22610c7fa1098fa09e27b81b464d327b",
+          "withoutMetadata": "19c6d072ebcde9b5992fb1cceff90800244b703a57aada1f293db9d3d67ab7ee",
+          "linkedWithoutMetadata": "19c6d072ebcde9b5992fb1cceff90800244b703a57aada1f293db9d3d67ab7ee"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "uniswapV2Call(address,uint256,uint256,bytes)",
+          "uniswapV3SwapCallback(int256,int256,bytes)",
+          "startFlashLoan((address,uint256,address,address),struct MyArb.Step[],uint256,uint256,bytes)",
+          "withdrawFunds()",
+          "()",
+          "getAmountOut(uint256,uint256,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "MyArb",
+            "src": "contracts/UniswapArb.sol:39"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "owner",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_address",
+              "contract": "MyArb",
+              "src": "contracts/UniswapArb.sol:30"
+            }
+          ],
+          "types": {
+            "t_address": {
+              "label": "address",
+              "numberOfBytes": "20"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.24"
+      }
+    },
+    {
+      "contracts/Lock.sol:Lock": {
+        "src": "contracts/Lock.sol:7",
+        "version": {
+          "withMetadata": "32cf9a717be438507954800aa1727d2006333395efd85a2f534544c36c96a4b6",
+          "withoutMetadata": "f13acc2b806eb594a976dd3d44e7798bda961b2cbc2a5c1c21c53193f645040f",
+          "linkedWithoutMetadata": "f13acc2b806eb594a976dd3d44e7798bda961b2cbc2a5c1c21c53193f645040f"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "(uint256)",
+          "withdraw()"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "Lock",
+            "src": "contracts/Lock.sol:13"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "unlockTime",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_uint256",
+              "contract": "Lock",
+              "src": "contracts/Lock.sol:8"
+            },
+            {
+              "label": "owner",
+              "offset": 0,
+              "slot": "1",
+              "type": "t_address_payable",
+              "contract": "Lock",
+              "src": "contracts/Lock.sol:9"
+            }
+          ],
+          "types": {
+            "t_address_payable": {
+              "label": "address payable",
+              "numberOfBytes": "20"
+            },
+            "t_uint256": {
+              "label": "uint256",
+              "numberOfBytes": "32"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.25"
+      },
+      "contracts/UniswapArb.sol:IERC20": {
+        "src": "contracts/UniswapArb.sol:3",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "balanceOf(address)",
+          "transfer(address,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.25"
+      },
+      "contracts/UniswapArb.sol:IUniswapV2Pair": {
+        "src": "contracts/UniswapArb.sol:23",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "swap(uint256,uint256,address,bytes)",
+          "getReserves()"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.25"
+      },
+      "contracts/UniswapArb.sol:IUniswapV3Pool": {
+        "src": "contracts/UniswapArb.sol:13",
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "swap(address,bool,int256,uint160,bytes)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.25"
+      },
+      "contracts/UniswapArb.sol:IWETH": {
+        "src": "contracts/UniswapArb.sol:8",
+        "inherit": [
+          "contracts/UniswapArb.sol:IERC20"
+        ],
+        "libraries": [],
+        "methods": [
+          "deposit()",
+          "withdraw(uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [],
+        "layout": {
+          "storage": [],
+          "types": {},
+          "layoutVersion": "1.2",
+          "flat": false,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.25"
+      },
+      "contracts/UniswapArb.sol:MyArb": {
+        "src": "contracts/UniswapArb.sol:28",
+        "version": {
+          "withMetadata": "8245da9e25b2e690083659b08c4e654d3e8fadd5613c4b385f840c9cbca95b92",
+          "withoutMetadata": "61447a23da0b94222b6bcc9a396daca5d0814e26102e86dfec6d6d556d439b53",
+          "linkedWithoutMetadata": "61447a23da0b94222b6bcc9a396daca5d0814e26102e86dfec6d6d556d439b53"
+        },
+        "inherit": [],
+        "libraries": [],
+        "methods": [
+          "()",
+          "uniswapV2Call(address,uint256,uint256,bytes)",
+          "uniswapV3SwapCallback(int256,int256,bytes)",
+          "startFlashLoan((address,uint256,address,address),struct MyArb.Step[],uint256,uint256,bytes)",
+          "withdrawFunds()",
+          "()",
+          "getAmountOut(uint256,uint256,uint256)"
+        ],
+        "linkReferences": [],
+        "errors": [
+          {
+            "kind": "constructor",
+            "contract": "MyArb",
+            "src": "contracts/UniswapArb.sol:36"
+          }
+        ],
+        "layout": {
+          "storage": [
+            {
+              "label": "owner",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_address",
+              "contract": "MyArb",
+              "src": "contracts/UniswapArb.sol:29"
+            }
+          ],
+          "types": {
+            "t_address": {
+              "label": "address",
+              "numberOfBytes": "20"
+            }
+          },
+          "layoutVersion": "1.2",
+          "flat": true,
+          "namespaces": {}
+        },
+        "solcVersion": "0.8.25"
+      }
+    }
+  ]
+}

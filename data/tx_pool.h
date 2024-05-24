@@ -10,6 +10,7 @@
 #include "util/type.h"
 #include "util/transaction.h"
 #include "simulate/simulate_manager.h"
+#include "util/rw_lock.h"
 class ClientBase;
 
 struct Account {
@@ -57,6 +58,17 @@ public:
     // get pending tx by its order in the pool, x is used to notice if no new tx is here
     int get_tx(size_t index, std::shared_ptr<Transaction>& tx, std::atomic<uint32_t>* x = NULL);
     void add_raw_tx(const std::string& hash, const std::string& raw_tx);
+    void add_my_tx( std::shared_ptr<Transaction> tx, const Transaction& my_tx);
+    std::string get_raw_tx(const std::string& hash) {
+        std::string ret;
+        _rw_lock.lock_read();
+        auto p = _raw_txs.seek(hash);
+        if (p) {
+            ret = *p;
+        }
+        _rw_lock.unlock_read();
+        return ret;
+    }
 private:
     /// @brief update the tx within the account
     void update_txs(Account* account, int64_t nonce);
@@ -69,4 +81,5 @@ private:
     bthread_mutex_t _mutex; // for _accounts, _txs
     bvar::LatencyRecorder _unorder_ratio;
     evmc::SimulateManager* _simulate_manager;
+    ReadWriteLock _rw_lock; // for raw_tx
 };

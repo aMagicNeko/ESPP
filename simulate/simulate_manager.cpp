@@ -256,10 +256,11 @@ int64_t compute_tx_intrinsic_cost(evmc_revision rev, std::shared_ptr<Transaction
            initcode_cost;
 }
 
-void SimulateManager::simulate_tx_impl(std::shared_ptr<Transaction> tx, int index) {
+void SimulateManager::simulate_tx_impl(std::shared_ptr<Transaction> tx, std::shared_ptr<SimulateHost>& host) {
     address from = tx->from.value;
     const evmc_bytes32* blob_hashes = 0; // fake
     uint32_t blob_hash_count = 0; // fake
+    bool print_my_log = true;
     evmc_tx_context context {
         add_bytes32(bytes32(tx->priority_fee), _base_fee),
         from,
@@ -276,8 +277,10 @@ void SimulateManager::simulate_tx_impl(std::shared_ptr<Transaction> tx, int inde
         0,
         0
     };
-    SimulateHost* prev = 0;
-    auto host = std::make_shared<SimulateHost>(_vm, prev, tx->from, tx->nonce, context, this);
+    if (!host) {
+        print_my_log = false;
+        host = std::make_shared<SimulateHost>(_vm, nullptr, tx->from, tx->nonce, context, this);
+    }
     host->set_nonce(from, tx->nonce);
     int64_t gas1 = compute_tx_intrinsic_cost(EVMC_LATEST_STABLE_REVISION, tx);
     bytes32 balance(0);
@@ -296,19 +299,16 @@ void SimulateManager::simulate_tx_impl(std::shared_ptr<Transaction> tx, int inde
         LOG(WARNING) << "simulate failed:" << e.what();
         return;
     }
-    LOG(INFO) << "end to simulte result:" << index << evmc_result_to_string(res);
-    auto tmp = host->get_logs();
-    for (auto& p:tmp) {
-        LOG(INFO) << "logs:" << p.to_string();
+    if (print_my_log) [[unlikely]] {
+        std::stringstream ss;
+        ss << "end to simulte result:"  << evmc_result_to_string(res);
+        auto tmp = host->get_logs();
+        for (auto& p:tmp) {
+            ss << "logs:" << p.to_string();
+        }
+        ss << "gas consumption:" << gas_comsumption(tx->gas, res);
+        LOG(INFO) << ss.str();
     }
-    LOG(INFO) << "gas consumption:" << gas_comsumption(tx->gas, res);
-    if (host->error()) [[unlikely]] {
-        LOG(ERROR) << "simulate client error";
-        return;
-    }
-    // do arb search
-    OnlineSearch search;
-    search.search(tx, host->get_logs());
 }
 
 inline uint64_t SimulateManager::gas_comsumption(uint64_t gas_limit, const Result& res) {
@@ -330,10 +330,37 @@ struct SimulateThreadArg{
     SimulateManager* manager;
 };
 
+struct MySimulateThreadArg{
+    std::shared_ptr<Transaction> tx;
+    SimulateManager* manager;
+    std::shared_ptr<Transaction> my_tx;
+};
+
 void* SimulateManager::wrap_simulate_tx(void* arg) {
     SimulateThreadArg* p = (SimulateThreadArg*)arg;
-    p->manager->simulate_tx_impl(p->tx);
-    if (p->manager->_thread_cnt.fetch_sub(1) == 0) {
+    std::shared_ptr<SimulateHost> host;
+    p->manager->simulate_tx_impl(p->tx, host);
+    // do arb search
+    if (host->error()) [[unlikely]] {
+        LOG(ERROR) << "simulate client error";
+    }
+    else {
+        OnlineSearch search;
+        search.search(p->tx, host->get_logs(), p->manager->_block_number);
+    }
+    if (p->manager->_thread_cnt.fetch_sub(1, std::memory_order_relaxed) == 0) {
+        delete p->manager;
+    }
+    delete p;
+    return NULL;
+}
+
+void* SimulateManager::wrap_simulate_my_tx(void* arg) {
+    MySimulateThreadArg* p = (MySimulateThreadArg*)arg;
+    std::shared_ptr<SimulateHost> host;
+    p->manager->simulate_tx_impl(p->tx, host);
+    p->manager->simulate_tx_impl(p->my_tx, host);
+    if (p->manager->_thread_cnt.fetch_sub(1, std::memory_order_relaxed) == 0) {
         delete p->manager;
     }
     delete p;
@@ -343,12 +370,20 @@ void* SimulateManager::wrap_simulate_tx(void* arg) {
 void SimulateManager::notice_tx(std::shared_ptr<Transaction> tx) {
     SimulateThreadArg* arg = new SimulateThreadArg {tx, this};
     bthread_t bid = 0;
-    _thread_cnt.fetch_add(1);
-    bthread_start_background(&bid, NULL, wrap_simulate_tx, arg);
+    _thread_cnt.fetch_add(1, std::memory_order_relaxed);
+    bthread_start_background(&bid, 0, wrap_simulate_tx, arg);
+}
+
+void SimulateManager::notice_tx(std::shared_ptr<Transaction> tx, const Transaction& my_tx) {
+    MySimulateThreadArg* arg = new MySimulateThreadArg {tx, this, std::make_shared<Transaction>(my_tx)};
+    bthread_t bid = 0;
+    _thread_cnt.fetch_add(1, std::memory_order_relaxed);
+    bthread_start_background(&bid, 0, wrap_simulate_my_tx, arg);
+
 }
 
 void SimulateManager::release_ptr() {
-    if (_thread_cnt.fetch_sub(1) == 0) {
+    if (_thread_cnt.fetch_sub(1, std::memory_order_relaxed) == 0) {
         delete this;
     }
 }

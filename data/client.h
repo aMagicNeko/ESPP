@@ -21,13 +21,13 @@ public:
     int subscribe_headers();
     int subscribe_transactions();
     int handle_transactions(const json& hash, uint32_t id = 0);
-    uint64_t base_fee() {
-        LockGuard lock(&_block_info_mutex);
-        return _block_info.base_fee;
-    }
     uint64_t number() {
-        LockGuard lock(&_block_info_mutex);
+        // lock free
         return _block_info.number;
+    }
+    uint64_t base_fee() {
+        // lock free
+        return _block_info.base_fee;
     }
 protected:
     int set_fd(int fd);

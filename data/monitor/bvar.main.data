@@ -1,0 +1,36 @@
+main_bthread_count : 3
+main_bthread_count_0 : 3
+main_bthread_group_status : "0 0 0 0 0 0 0 0 0 "
+main_bthread_key_count : 1
+main_bthread_keytable_count : 2
+main_bthread_keytable_memory : 1536
+main_bthread_signal_second : 0
+main_bthread_stack_count : 5
+main_bthread_switch_second : 1
+main_bthread_timer_scheduled_second : 0
+main_bthread_timer_triggered_second : 0
+main_bthread_timer_usage : 3.97978e-06
+main_bthread_worker_count : 9
+main_bthread_worker_count_0 : 9
+main_bthread_worker_usage : 0
+main_bthread_worker_usage_0 : 0
+main_bvar_dump_interval : 600
+main_bvar_sampler_collector_usage : 0.00137571
+main_gcc_version : "11.4.1"
+main_header_count : 0
+main_pgrp : 27059
+main_pid : 27059
+main_ppid : 27012
+main_rpc_compressions : ""
+main_rpc_load_balancer : ""
+main_rpc_naming_service : ""
+main_rpc_profilers : "heap(no TCMALLOC_SAMPLE_PARAMETER in env) contention"
+main_rpc_protocols : ""
+main_rpc_revision : "1.9.0"
+main_rpcz_sampling_ratio : 1.000
+main_system_core_count : 16
+main_system_loadavg_15m : 0.830
+main_system_loadavg_1m : 0.670
+main_system_loadavg_5m : 0.740
+main_tx_detail_count : 0
+main_unorder_ratio_count : 0

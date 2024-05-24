@@ -157,7 +157,7 @@ int UniswapV2Pool::on_event(const LogEntry& log, bool pending) {
         //LOG(ERROR) << "invalid swap data: " << log.data.to_string();
         return -1; // no need to update
     }
-    LOG(INFO) << "matched uniswapV2 log, pool:" << log.address.to_string();
+    //LOG(INFO) << "matched uniswapV2 log, pool:" << log.address.to_string();
     uint256_t amount0 = log.data.to_uint256(0, 32);
     uint256_t amount1 = log.data.to_uint256(32, 64);
     int ret = 0;
@@ -200,8 +200,6 @@ inline uint256_t upround_div(uint256_t x, uint256_t y) {
     return x % y ? (x / y + 1) : x / y;
 }
 
-const uint256_t MAX_TOKEN_NUM = (uint256_t(1) << 112);
-
 uint256_t UniswapV2Pool::compute_output(uint256_t in, bool direction) const {
     if (in >= MAX_TOKEN_NUM || in == 0) {
         return 0;
@@ -229,7 +227,7 @@ uint256_t UniswapV2Pool::compute_output(uint256_t in, bool direction) const {
         //LOG(DEBUG) << "numof_token0_after_swap:" << numof_token0_after_swap;
         out = ((uint256_t(1000) * _reserve0 - numof_token0_after_swap) / 1000);
     }
-    LOG(DEBUG) << "compute_output in:" << in << " out:" << out;
+    //LOG(DEBUG) << "compute_output in:" << in << " out:" << out;
     return out;
 }
 
@@ -245,7 +243,7 @@ uint256_t UniswapV2Pool::compute_input(uint256_t out, bool direction) const {
         uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
         uint256_t numof_token1_after_swap = uint256_t(1000) * (_reserve1 - out);
         uint256_t numof_token0_after_swap = upround_div(liq, numof_token1_after_swap);
-        LOG(DEBUG) << "liq:" << liq << " numof_token1_after_swap:" << numof_token1_after_swap << " numof_token0_after_swap:" << numof_token0_after_swap;
+        //LOG(DEBUG) << "liq:" << liq << " numof_token1_after_swap:" << numof_token1_after_swap << " numof_token0_after_swap:" << numof_token0_after_swap;
         in = upround_div(numof_token0_after_swap - uint256_t(1000) * _reserve0, uint256_t(1000 - 3));
     }
     else {
@@ -255,10 +253,10 @@ uint256_t UniswapV2Pool::compute_input(uint256_t out, bool direction) const {
         uint256_t liq = uint256_t(1000000) * _reserve0 * _reserve1;
         uint256_t numof_token0_after_swap = uint256_t(1000) * (_reserve0 - out);
         uint256_t numof_token1_after_swap = upround_div(liq, numof_token0_after_swap);
-        LOG(DEBUG) << "liq:" << liq << " numof_token0_after_swap:" << numof_token0_after_swap << " numof_token1_after_swap:" << numof_token1_after_swap;
+        //LOG(DEBUG) << "liq:" << liq << " numof_token0_after_swap:" << numof_token0_after_swap << " numof_token1_after_swap:" << numof_token1_after_swap;
         in = upround_div(numof_token1_after_swap - uint256_t(1000) * _reserve1, uint256_t(1000 - 3));
     }
-    LOG(DEBUG) << "compute_input out:" << out << " int:" << in;
+    //LOG(DEBUG) << "compute_input out:" << out << " int:" << in;
     return in;
 }
 
@@ -288,7 +286,7 @@ uint256_t UniswapV2Pool::process_swap(uint256_t in, bool direction) {
     }
     _reserve0 = new_reserve0;
     _reserve1 = new_reserve1;
-    LOG(INFO) << "swap in:" << in << " out:" << out;
+    //LOG(INFO) << "swap in:" << in << " out:" << out;
     return out;
 }
 

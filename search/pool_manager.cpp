@@ -4,6 +4,7 @@
 #include <filesystem>
 #include "simulate/prev_logs.h"
 #include "data/secure_websocket.h"
+#include <unordered_set>
 DECLARE_bool(check_simulate_result);
 DECLARE_int32(uniswapv3_half_tick_count);
 DECLARE_int32(long_request_failed_limit);
@@ -20,8 +21,12 @@ inline bool PoolCmp::operator()(PoolBase* pool1, PoolBase* pool2) const {
     uint256_t token2_out = pool2->compute_output(token_in, true);
     uint256_t eth_out1 = PoolManager::instance()->token_to_eth(token_index1, token1_out);
     uint256_t eth_out2 = PoolManager::instance()->token_to_eth(token_index2, token2_out);
+    if (eth_out1 == eth_out2) [[unlikely]] {
+        return pool1 < pool2;
+    }
     return eth_out1 > eth_out2;
 }
+
 inline bool PoolReverseCmp::operator()(PoolBase* pool1, PoolBase* pool2) const {
     uint32_t token_index = pool1->token2;
     uint256_t token_in = PoolManager::instance()->eth_to_token(token_index, CMP_UNIT);
@@ -31,15 +36,34 @@ inline bool PoolReverseCmp::operator()(PoolBase* pool1, PoolBase* pool2) const {
     uint256_t token2_out = pool2->compute_output(token_in, false);
     uint256_t eth_out1 = PoolManager::instance()->token_to_eth(token_index1, token1_out);
     uint256_t eth_out2 = PoolManager::instance()->token_to_eth(token_index2, token2_out);
+    if (eth_out1 == eth_out2) [[unlikely]] {
+        return pool1 < pool2;
+    }
     return eth_out1 > eth_out2;
 }
+
+inline bool TokenCmp::operator()(uint32_t t1, uint32_t t2) const {
+    int pool_cnt1 = PoolManager::instance()->_pools_map[t1].size() + PoolManager::instance()->_pools_reverse_map[t1].size();
+    int pool_cnt2 = PoolManager::instance()->_pools_map[t2].size() + PoolManager::instance()->_pools_reverse_map[t2].size();
+    if (pool_cnt1 == pool_cnt2) {
+        return t1 < t2;
+    }
+    return pool_cnt1 > pool_cnt2;
+    //uint256_t weth1 = PoolManager::instance()->_weth_pool_weth_num[t1];
+    //uint256_t weth2 = PoolManager::instance()->_weth_pool_weth_num[t2];
+    //if (weth1 == weth2) [[unlikely]] {
+    //    return t1 < t2;
+    //}
+    //return weth1 > weth2;
+}
+
 // ensure only one thread is processing and for memory fence
 static std::atomic<int> s_update_pools_wrap_status;
 const Address WETH_ADDR("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
 void PoolManager::gen_weth_info() {
     _weth_index = _tokens_index[WETH_ADDR];
-    _weth_pool_token_num.resize(_tokens_index.size());
-    _weth_pool_weth_num.resize(_tokens_index.size());
+    _weth_pool_token_num.resize(_tokens_index.size(), 0);
+    _weth_pool_weth_num.resize(_tokens_index.size(), 0);
     for (auto item : _pools_address_map) {
         PoolBase* pool = item.second;
         if (pool->token1 == _weth_index) {
@@ -52,25 +76,22 @@ void PoolManager::gen_weth_info() {
         }
     }
     // weth for weth
-    _weth_pool_weth_num[_weth_index] = CMP_UNIT;
-    _weth_pool_token_num[_weth_index] = CMP_UNIT;
+    _weth_pool_weth_num[_weth_index] = MAX_TOKEN_NUM;
+    _weth_pool_token_num[_weth_index] = MAX_TOKEN_NUM;
     _pools_map.resize(_tokens_index.size());
     _pools_reverse_map.resize(_tokens_index.size());
     for (auto& item : _pools_address_map) {
         PoolBase* pool = item.second;
-        _pools_map[pool->token1].insert(pool);
-        _pools_reverse_map[pool->token2].insert(pool);
-    }
-    _weth_map.resize(_tokens_index.size());
-    _reverse_weth_map.resize(_tokens_index.size());
-    for (auto item:_pools_address_map) {
-        PoolBase* pool = item.second;
-        if (pool->token1 == _weth_index) {
-            _reverse_weth_map[pool->token2].insert(pool);
+        auto p = _pools_map[pool->token1].find(pool->token2);
+        if (p == _pools_map[pool->token1].end()) {
+            p = _pools_map[pool->token1].emplace(pool->token2, std::set<PoolBase*, PoolCmp>()).first;
         }
-        else if (pool->token2 == _weth_index) {
-            _weth_map[pool->token1].insert(pool);
+        p->second.insert(pool);
+        auto pp = _pools_reverse_map[pool->token2].find(pool->token1);
+        if (pp == _pools_reverse_map[pool->token2].end()) {
+            pp = _pools_reverse_map[pool->token2].emplace(pool->token1, std::set<PoolBase*, PoolReverseCmp>()).first;
         }
+        pp->second.insert(pool);
     }
 }
 
@@ -104,7 +125,6 @@ void PoolManager::load_from_file() {
     file.read(reinterpret_cast<char*>(&_trace_block), sizeof(_trace_block));
     size_t token_size = 0;
     file.read(reinterpret_cast<char*>(&token_size), sizeof(token_size));
-    LOG(INFO) << "token size:" << _tokens_address.size();
     for (size_t cur = 0; cur < token_size; ++cur) {
         Address a;
         a.load_from_file(file);
@@ -121,7 +141,7 @@ void PoolManager::load_from_file() {
             LOG(ERROR) << "load pool failed";
             return;
         }
-        LOG(INFO) << cur << "th pool:" << pool->address.to_string() << " token1:" << pool->token1 << " token2:" << pool->token2;
+        //LOG(INFO) << cur << "th pool:" << pool->address.to_string() << " token1:" << pool->token1 << " token2:" << pool->token2;
     }
     // _tokens_index
     for (uint32_t i = 0; i < _tokens_address.size(); ++i) {
@@ -130,8 +150,9 @@ void PoolManager::load_from_file() {
     LOG(INFO) << "load pools from file success";
 }
 
-int PoolManager::init() {
+int PoolManager::init(ClientBase* client) {
     _client = new SecureWebsocket;
+    _tx_client = client;
     if (_client->connect(FLAGS_host, FLAGS_port, FLAGS_path) != 0) {
         return -1;
     }
@@ -183,6 +204,23 @@ int PoolManager::init() {
     save_to_file();
     // for memory fence
     s_update_pools_wrap_status.store(0, std::memory_order_release);
+    int ntoken = 0;
+    std::set<uint32_t, TokenCmp> token_set;
+    for (int i = 0; i < _tokens_address.size(); ++i) {
+        if (_weth_pool_token_num[i] != 0) {
+            ++ntoken;
+        }
+        token_set.insert(i);
+    }
+    //LOG(INFO) << "ntokens directly connected with weth:" << ntoken;
+    //for (uint32_t x:token_set) {
+    //    LOG(INFO) << _tokens_address[x].to_string() << " num:" << _weth_pool_weth_num[x];
+    //}
+    //for (auto& [x, y] : _pools_map[_weth_index]) {
+    //    LOG(INFO) << "pool order new set";
+    //    for (auto pool : y)
+    //        LOG(INFO) << "pool order:" << pool->get_liquidit();
+    //}
     return 0;
 }
 
@@ -220,6 +258,7 @@ UniswapV3Pool* PoolManager::add_uniswapv3_pool(const Address& pool_addr, const A
 
 int PoolManager::update_pools() {
     int failed_cnt = 0;
+    std::unordered_set<PoolBase*> update_pools;
     while (failed_cnt < FLAGS_long_request_failed_limit) {
         uint64_t cur_block = 0;
         if (request_block_number(_client, cur_block) != 0) [[unlikely]] {
@@ -231,6 +270,19 @@ int PoolManager::update_pools() {
             if (FLAGS_check_simulate_result) [[unlikely]] {
                 PrevLogs::instance()->on_head(_client);
             }
+            LOG(INFO) << "prepare to update maps";
+            _rw_lock.lock_write();
+            LOG(INFO) << "update maps ing";
+                for (auto pool:update_pools) {
+                    _pools_map[pool->token1][pool->token2].erase(pool);
+                    _pools_map[pool->token1][pool->token2].insert(pool);
+                }
+                for (auto pool:update_pools) {
+                    _pools_reverse_map[pool->token2][pool->token1].erase(pool);
+                    _pools_reverse_map[pool->token2][pool->token1].insert(pool);
+                }
+            LOG(INFO) << "update maps end";
+            _rw_lock.unlock_write();
             return 0;
         }
         uint32_t next = _trace_block + FLAGS_logs_step;
@@ -251,6 +303,7 @@ int PoolManager::update_pools() {
             auto p = _pools_address_map.seek(log.address);
             if (p) {
                 auto pool = *p;
+                update_pools.insert(pool);
                 int256_t reserve0 = pool->get_reserve0();
                 int256_t reserve1 = pool->get_reserve1();
                 if ((*p)->on_event(log) != 0) {
@@ -283,6 +336,30 @@ int PoolManager::update_pools() {
         _trace_block = next;
     }
     return -1;
+}
+
+int PoolManager::begin_search(uint64_t number) {
+    _rw_lock.lock_read();
+    if (_tx_client->number() != number) {
+        // old search
+        _rw_lock.unlock_read();
+        return -1;
+    }
+    //LOG(INFO) << "search begin";
+    return 0;
+}
+
+int PoolManager::halt_search(uint64_t number) {
+    if (_tx_client->number() != number) {
+        // old search
+        return -1;
+    }
+    return 0;
+}
+
+void PoolManager::end_search() {
+    _rw_lock.unlock_read();
+    //LOG(INFO) << "search end";
 }
 
 int PoolManager::check_parent(const std::string& parent_hash) const {
@@ -337,20 +414,26 @@ void PoolManager::on_head(const std::string& parent_hash) {
 }
 
 uint256_t PoolManager::token_to_eth(uint32_t token_index, uint256_t input, PoolBase** pool_ret) {
+    if (token_index == _weth_index) {
+        return input;
+    }
     uint256_t max_ret = 0;
-    for (auto pool : _weth_map[token_index]) {
+    for (auto pool : _pools_map[_weth_index][token_index]) {
+        uint256_t out = pool->compute_output(input, false);
+        if (out > max_ret) {
+            max_ret = out;
+            *pool_ret = pool;
+        }
+    }
+    for (auto pool: _pools_reverse_map[token_index][_weth_index]) {
         uint256_t out = pool->compute_output(input, true);
         if (out > max_ret) {
             max_ret = out;
             *pool_ret = pool;
         }
     }
-    for (auto pool: _reverse_weth_map[token_index]) {
-        uint256_t out = pool->compute_output(input, false);
-        if (out > max_ret) {
-            max_ret = out;
-            *pool_ret = pool;
-        }
+    if (max_ret) {
+        LOG(DEBUG) << "eth pool:" << (*pool_ret)->to_string() << " input token:" << input << " eth out:" << max_ret; 
     }
     return max_ret;
 }
@@ -367,17 +450,24 @@ int PoolManager::reset_connection() {
 }
 
 uint256_t PoolManager::token_to_eth(uint32_t token_index, uint256_t token_in) {
-    if (_weth_pool_token_num[token_index] == 0) {
-        return (uint256_t(1) << 112) - 1;
+    auto nweth = _weth_pool_weth_num[token_index];
+    if (nweth == 0) {
+        return 0;
     }
-    return (uint512_t(token_in) * _weth_pool_weth_num[token_index] / _weth_pool_token_num[token_index]).convert_to<uint256_t>();
+    auto ntoken = _weth_pool_token_num[token_index];
+    if (ntoken == 0) {
+        return MAX_TOKEN_NUM;
+    }
+    return (uint512_t(token_in) * nweth / ntoken).convert_to<uint256_t>();
 }
 
 uint256_t PoolManager::eth_to_token(uint32_t token_index, uint256_t eth_in) {
-    if (_weth_pool_weth_num[token_index] == 0) {
-        return (uint256_t(1) << 112) - 1;
+    auto nweth = _weth_pool_weth_num[token_index];
+    if (nweth == 0) {
+        return MAX_TOKEN_NUM;
     }
-    return (uint512_t(eth_in) * _weth_pool_token_num[token_index] / _weth_pool_weth_num[token_index]).convert_to<uint256_t>();
+    auto ntoken = _weth_pool_token_num[token_index];
+    return (uint512_t(eth_in) * ntoken / nweth).convert_to<uint256_t>();
 }
 
 ClientBase* PoolManager::get_client() {
